@@ -74,7 +74,7 @@ const isAdmin = (permissions: string) => {
   }
 };
 
-const NO_CHANNEL = `Create a private text channel named **#${CHANNEL_NAME}** where the bot can see the channel, read its history, send and manage messages, then try again. Everything the bot keeps is in that channel.`;
+const NO_CHANNEL = `The EDCH bot isn't set up on this server yet (no **#${CHANNEL_NAME}** channel): an admin runs \`/bgs setup faction:…\`, which creates it.`;
 const MISSING_PERMISSIONS = `The bot couldn't create the role or the channel: it needs **Manage Roles** and **Manage Channels** (re-add it with the link, or give it these rights). Or create a private text channel **#${CHANNEL_NAME}** and a role yourself, then run \`/bgs setup\` again with \`role\`.`;
 const NOT_SET_UP = "The EDCH bot isn't set up on this server yet: an admin runs `/bgs setup` first.";
 
