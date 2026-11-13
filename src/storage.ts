@@ -21,7 +21,7 @@ import {
 export const SYNC_CHANNEL = "edch-sync";
 /** The channel people read (threads by system, daily recap), seen by the role. */
 export const BGS_CHANNEL = "edch-bgs";
-/** The role /bgs-admin setup creates when none is given (or reuses, by this name). */
+/** The role /bgs setup creates when none is given (or reuses, by this name). */
 export const ROLE_NAME = "EDCH-BGS";
 const CONFIG_MARK = '"edch":"config"';
 const REPORT_MARK = "edch:r1:";
@@ -147,7 +147,7 @@ export function configMessage(config: GuildConfig): string {
     revoked: config.revoked,
     recap: config.recapTick,
   });
-  return `**EDCH settings** (written by the bot: change them with /bgs-admin setup)\nFaction: **${config.faction}** · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
+  return `**EDCH settings** (written by the bot: change them with /bgs setup)\nFaction: **${config.faction}** · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
 }
 
 /** Writes the settings: edits the pinned message, or posts and pins a new one. */

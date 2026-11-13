@@ -60,7 +60,7 @@ async function bgs(
     channel_id: channelId,
     member: { user: { id: userId }, roles, permissions: admin ? "32" : "0" },
     data: {
-      name: command ?? (name === "setup" || name === "revoke" ? "bgs-admin" : "bgs"),
+      name: command ?? "bgs",
       options: [{ name, options: Object.entries(options).map(([n, value]) => ({ name: n, value })) }],
     },
   };
@@ -312,14 +312,11 @@ test("setup: creates the EDCH-BGS role, the data channel and the reading channel
   assert.equal((await readConfig(discord.api, sync.id, BOT_ID)).config.faction, "Faction B");
 });
 
-test("admin commands: refused to members, even under /bgs", async () => {
+test("admin commands: setup and revoke refused to members without the rights", async () => {
   const { discord } = await twoServers();
   assert.match(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "setup", { faction: "X" }), /Only admins/);
   assert.match(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "revoke", { member: ADMIN }), /Only admins/);
-  assert.match(
-    await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "X" }, { admin: true, command: "bgs" }),
-    /Unknown/,
-  );
+  assert.match(await bgs(discord, GUILD_A, ADMIN, [], "other", {}, { admin: true, command: "bgs-admin" }), /Unknown/);
 });
 
 test("link: by direct message, in the chosen channel only, in the answer when DMs are closed", async () => {

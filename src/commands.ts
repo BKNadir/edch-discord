@@ -2,11 +2,12 @@
 // channel and member, with the member's roles and permissions: the bot trusts those (the signature
 // is checked first, index.ts) and never a server or channel typed by someone.
 //
-// Admins only (declared for Manage Server, so others don't even see them; checked here too):
-//   /bgs-admin setup faction [role] [link_channel]   the faction followed; creates the EDCH-BGS
-//       role, #edch-sync (data, admins only) and #edch-bgs (reading, the role) when missing;
+// Admins only (Administrator or Manage Server; Discord lists subcommands to everyone, so the
+// bot checks the rights Discord signed with the command):
+//   /bgs setup faction [role] [link_channel]   the faction followed; creates the EDCH-BGS role,
+//       #edch-sync (data, admins only) and #edch-bgs (reading, the role) when missing;
 //       link_channel: the only channel where /bgs link works
-//   /bgs-admin revoke member                          cancels a member's keys
+//   /bgs revoke member                          cancels a member's keys
 // Members:
 //   /bgs link              members with the role: their EDCH key, by direct message
 //   /bgs unlink            a member cancels their own keys
@@ -83,15 +84,14 @@ const isAdmin = (permissions: string) => {
   }
 };
 
-const NO_CHANNEL = `The EDCH bot isn't set up on this server yet (no **#${SYNC_CHANNEL}** channel): an admin runs \`/bgs-admin setup faction:…\`, which creates it.`;
-const MISSING_PERMISSIONS = `The bot couldn't create the role or the channels: it needs **Manage Roles** and **Manage Channels** (re-add it with the link, or give it these rights). Or create the private text channels **#${SYNC_CHANNEL}** (admins and the bot) and **#${BGS_CHANNEL}** (the role and the bot) and a role yourself, then run \`/bgs-admin setup\` again with \`role\`.`;
-const NOT_SET_UP = "The EDCH bot isn't set up on this server yet: an admin runs `/bgs-admin setup` first.";
+const NO_CHANNEL = `The EDCH bot isn't set up on this server yet (no **#${SYNC_CHANNEL}** channel): an admin runs \`/bgs setup faction:…\`, which creates it.`;
+const MISSING_PERMISSIONS = `The bot couldn't create the role or the channels: it needs **Manage Roles** and **Manage Channels** (re-add it with the link, or give it these rights). Or create the private text channels **#${SYNC_CHANNEL}** (admins and the bot) and **#${BGS_CHANNEL}** (the role and the bot) and a role yourself, then run \`/bgs setup\` again with \`role\`.`;
+const NOT_SET_UP = "The EDCH bot isn't set up on this server yet: an admin runs `/bgs setup` first.";
 
 /** Answers one interaction. */
 export async function handleInteraction(interaction: Interaction, ctx: Context): Promise<Answer> {
   if (interaction.type === 1) return { response: { type: PONG } };
-  const command = interaction.data?.name;
-  if (interaction.type !== 2 || (command !== "bgs" && command !== "bgs-admin")) return reply("Unknown command.");
+  if (interaction.type !== 2 || interaction.data?.name !== "bgs") return reply("Unknown command.");
   const guildId = interaction.guild_id;
   const member = interaction.member;
   if (!guildId || !member) return reply("The EDCH bot works in a server, not in direct messages.");
@@ -104,7 +104,9 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
   // The bot's id: from the settings, or from Discord's own message when it isn't set.
   const botId = ctx.env.DISCORD_APPLICATION_ID || interaction.application_id;
   const admin = isAdmin(member.permissions);
-  if (command === "bgs-admin" && !admin) return reply("Only admins (Manage Server) can configure the EDCH bot.");
+  // Configuring is for admins; every subcommand is listed to everyone, so it's checked here.
+  if ((sub?.name === "setup" || sub?.name === "revoke") && !admin)
+    return reply("Only admins (Administrator or Manage Server) can configure the EDCH bot.");
 
   /** Runs `work` after a deferred answer, then writes its result as the answer. */
   const deferred = (work: () => Promise<string>): Answer => ({
@@ -141,7 +143,6 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
 
   switch (sub?.name) {
     case "setup": {
-      if (command !== "bgs-admin") return reply("Unknown command.");
       const givenRole = String(option("role") ?? "");
       const linkChannel = String(option("link_channel") ?? "");
       const faction = String(option("faction") ?? "")
@@ -191,7 +192,6 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
     }
 
     case "link":
-      if (command !== "bgs") return reply("Unknown command.");
       return deferred(async () => {
         const loaded = await load();
         if (typeof loaded === "string") return loaded;
@@ -218,7 +218,6 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
     case "unlink":
     case "revoke": {
       const target = sub.name === "unlink" ? userId : String(option("member") ?? "");
-      if ((sub.name === "revoke") !== (command === "bgs-admin")) return reply("Unknown command.");
       if (!/^\d{17,20}$/.test(target)) return reply("Choose a member.");
       return deferred(async () => {
         const loaded = await load();
@@ -232,7 +231,6 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
     }
 
     case "summary": {
-      if (command !== "bgs") return reply("Unknown command.");
       const period = String(option("period") ?? "tick");
       return deferred(async () => {
         const loaded = await load();

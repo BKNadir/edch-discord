@@ -34,23 +34,23 @@ doesn't want to depend on anyone can run its own copy (below).
 
 Commands leave nothing in the channel: every answer is seen by the member only.
 
-| Command                                          | Who                           | What                                                                                                                                                 |
-| ------------------------------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/bgs-admin setup faction [role] [link_channel]` | admins (Manage Server)        | the faction followed; creates the `EDCH-BGS` role, `#edch-sync` and `#edch-bgs` if missing; `link_channel`: the only channel where `/bgs link` works |
-| `/bgs-admin revoke member`                       | admins                        | cancels a member's keys                                                                                                                              |
-| `/bgs link`                                      | members with the role         | their EDCH key, by direct message (in the answer, seen by them only, when their DMs are closed)                                                      |
-| `/bgs unlink`                                    | anyone                        | cancels their own keys                                                                                                                               |
-| `/bgs summary [period]`                          | members with the role, admins | the squadron's work since the tick, 24 hours or 7 days                                                                                               |
+| Command                                    | Who                           | What                                                                                                                                                 |
+| ------------------------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/bgs setup faction [role] [link_channel]` | admins (Manage Server)        | the faction followed; creates the `EDCH-BGS` role, `#edch-sync` and `#edch-bgs` if missing; `link_channel`: the only channel where `/bgs link` works |
+| `/bgs revoke member`                       | admins                        | cancels a member's keys                                                                                                                              |
+| `/bgs link`                                | members with the role         | their EDCH key, by direct message (in the answer, seen by them only, when their DMs are closed)                                                      |
+| `/bgs unlink`                              | anyone                        | cancels their own keys                                                                                                                               |
+| `/bgs summary [period]`                    | members with the role, admins | the squadron's work since the tick, 24 hours or 7 days                                                                                               |
 
-`/bgs-admin` is shown to members with Manage Server only (Server Settings → Integrations can change
-that), and the bot checks it again. Removing the role stops a member's reports at once; their past
+`setup` and `revoke` are listed to everyone (Discord shows every subcommand) but the bot refuses
+them to anyone without the Administrator or Manage Server right. Removing the role stops a member's reports at once; their past
 reports still count.
 
 ## For a squadron (shared bot)
 
 1. An admin adds the bot with the link given in EDCH (Sync → Connect to the Discord bot) or by its
    host.
-2. `/bgs-admin setup faction:"Your faction"`: the bot creates the **`EDCH-BGS`** role,
+2. `/bgs setup faction:"Your faction"`: the bot creates the **`EDCH-BGS`** role,
    **`#edch-sync`** and **`#edch-bgs`** when they're missing, and pins its settings. Options:
    `role:@YourRole` for another role, `link_channel:#channel` to allow `/bgs link` there only.
    Without the Manage Roles and Manage Channels rights, create them yourself (private; in
