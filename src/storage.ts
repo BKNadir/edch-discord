@@ -70,8 +70,8 @@ async function deflate(text: string): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-async function inflate(bytes: Uint8Array): Promise<string> {
-  const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream("deflate"));
+async function inflate(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
   return new Response(stream).text();
 }
 
