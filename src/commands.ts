@@ -1,0 +1,186 @@
+// The /bgs command, answered from Discord's signed interactions. Discord tells which server, which
+// member and their roles and permissions: the bot trusts those (the signature is checked first,
+// index.ts) and never a server or channel typed by someone.
+//
+//   /bgs setup role faction   admins: the faction followed and the role allowed (in #edch-bgs)
+//   /bgs link                 members with the role: a key for their EDCH (only they see it)
+//   /bgs unlink               a member cancels their own keys
+//   /bgs revoke member        admins: cancel a member's keys
+//   /bgs summary [period]     members with the role: what the squadron did, by system
+//
+// Answers that need Discord's API are deferred (Discord gives 3 seconds) and written after.
+
+import { makeKey } from "./key.js";
+import { CHANNEL_NAME, findChannel, readActions, readConfig, writeConfig } from "./storage.js";
+import { summaryText } from "./summary.js";
+import type { DiscordApi, Env, GuildConfig } from "./types.js";
+
+/** Permission bits: Administrator, Manage Server. */
+const ADMINISTRATOR = 0x8n;
+const MANAGE_GUILD = 0x20n;
+/** Interaction answers: pong, message, deferred message; message flag: only the member sees it. */
+const PONG = 1;
+const MESSAGE = 4;
+const DEFERRED = 5;
+const EPHEMERAL = 64;
+
+export const TICK_URL = "https://tick.edcd.io/api/tick";
+
+export interface Context {
+  env: Env;
+  api: DiscordApi;
+  /** The bot's own address (https://…), written into the keys. */
+  botUrl: string;
+  now: number;
+  /** The last BGS tick (ISO), or null when unknown. */
+  tick: () => Promise<string | null>;
+}
+
+/** What to answer now, and the work that finishes the answer afterwards. */
+export interface Answer {
+  response: Record<string, unknown>;
+  later?: () => Promise<void>;
+}
+
+interface Interaction {
+  type: number;
+  token: string;
+  guild_id?: string;
+  member?: { user: { id: string }; roles: string[]; permissions: string };
+  data?: { name: string; options?: { name: string; options?: { name: string; value: unknown }[] }[] };
+}
+
+const reply = (content: string): Answer => ({
+  response: { type: MESSAGE, data: { content, flags: EPHEMERAL, allowed_mentions: { parse: [] } } },
+});
+
+const isAdmin = (permissions: string) => {
+  try {
+    const bits = BigInt(permissions);
+    return (bits & ADMINISTRATOR) !== 0n || (bits & MANAGE_GUILD) !== 0n;
+  } catch {
+    return false;
+  }
+};
+
+const NO_CHANNEL = `Create a private text channel named **#${CHANNEL_NAME}** where the bot can see the channel, read its history, send and manage messages, then try again. Everything the bot keeps is in that channel.`;
+const NOT_SET_UP = "EDCH-Discord isn't set up on this server yet: an admin runs `/bgs setup` first.";
+
+/** Answers one interaction. */
+export async function handleInteraction(interaction: Interaction, ctx: Context): Promise<Answer> {
+  if (interaction.type === 1) return { response: { type: PONG } };
+  if (interaction.type !== 2 || interaction.data?.name !== "bgs") return reply("Unknown command.");
+  const guildId = interaction.guild_id;
+  const member = interaction.member;
+  if (!guildId || !member) return reply("EDCH-Discord works in a server, not in direct messages.");
+  if (ctx.env.DISCORD_GUILD_ID && guildId !== ctx.env.DISCORD_GUILD_ID)
+    return reply("This copy of EDCH-Discord belongs to another squadron: it does nothing here.");
+
+  const sub = interaction.data.options?.[0];
+  const option = (name: string) => sub?.options?.find((o) => o.name === name)?.value;
+  const userId = member.user.id;
+  const admin = isAdmin(member.permissions);
+
+  /** Runs `work` after a deferred answer, then writes its result as the answer. */
+  const deferred = (work: () => Promise<string>): Answer => ({
+    response: { type: DEFERRED, data: { flags: EPHEMERAL } },
+    later: async () => {
+      let content: string;
+      try {
+        content = await work();
+      } catch {
+        content = "Something went wrong talking to Discord. Try again in a moment.";
+      }
+      await ctx.api.editInteractionReply(interaction.token, content);
+    },
+  });
+
+  /** The server's channel and settings, or the message saying what is missing. */
+  const load = async (): Promise<{ channelId: string; config: GuildConfig; messageId: string } | string> => {
+    const channelId = await findChannel(ctx.api, guildId);
+    if (!channelId) return NO_CHANNEL;
+    const found = await readConfig(ctx.api, channelId, ctx.env.DISCORD_APPLICATION_ID);
+    return found ? { channelId, ...found } : NOT_SET_UP;
+  };
+
+  switch (sub?.name) {
+    case "setup": {
+      if (!admin) return reply("Only admins (Manage Server) can set EDCH-Discord up.");
+      const roleId = String(option("role") ?? "");
+      const faction = String(option("faction") ?? "")
+        .trim()
+        .slice(0, 120);
+      if (!/^\d{17,20}$/.test(roleId) || !faction) return reply("Give the role and the faction.");
+      return deferred(async () => {
+        const channelId = await findChannel(ctx.api, guildId);
+        if (!channelId) return NO_CHANNEL;
+        const found = await readConfig(ctx.api, channelId, ctx.env.DISCORD_APPLICATION_ID);
+        const config: GuildConfig = { faction, roleId, revoked: found?.config.revoked ?? {} };
+        await writeConfig(ctx.api, channelId, config, found?.messageId);
+        return `Set up: the squadron follows **${faction}**; members with <@&${roleId}> can link EDCH with \`/bgs link\`. Reports go to <#${channelId}>.`;
+      });
+    }
+
+    case "link":
+      return deferred(async () => {
+        const loaded = await load();
+        if (typeof loaded === "string") return loaded;
+        if (!member.roles.includes(loaded.config.roleId))
+          return `You need the <@&${loaded.config.roleId}> role to link EDCH: ask an admin.`;
+        const key = await makeKey(
+          { bot: ctx.botUrl, guildId, channelId: loaded.channelId, userId, issuedAt: Math.floor(ctx.now / 1000) },
+          ctx.env.LINK_SECRET,
+        );
+        return [
+          `Your EDCH key for **${loaded.config.faction}** (only you can see this message):`,
+          "```",
+          key,
+          "```",
+          'In EDCH: Sync → EDCH-Discord → paste the key and tick "Send BGS reports". Keep it to yourself: it reports in your name. `/bgs unlink` cancels it.',
+        ].join("\n");
+      });
+
+    case "unlink":
+    case "revoke": {
+      const target = sub.name === "unlink" ? userId : String(option("member") ?? "");
+      if (sub.name === "revoke" && !admin) return reply("Only admins (Manage Server) can cancel someone's keys.");
+      if (!/^\d{17,20}$/.test(target)) return reply("Choose a member.");
+      return deferred(async () => {
+        const loaded = await load();
+        if (typeof loaded === "string") return loaded;
+        loaded.config.revoked[target] = Math.floor(ctx.now / 1000);
+        await writeConfig(ctx.api, loaded.channelId, loaded.config, loaded.messageId);
+        return sub.name === "unlink"
+          ? "Your EDCH keys are cancelled. `/bgs link` gives you a new one."
+          : `<@${target}>'s EDCH keys are cancelled. They need the role and \`/bgs link\` to report again.`;
+      });
+    }
+
+    case "summary": {
+      const period = String(option("period") ?? "tick");
+      return deferred(async () => {
+        const loaded = await load();
+        if (typeof loaded === "string") return loaded;
+        if (!admin && !member.roles.includes(loaded.config.roleId))
+          return `You need the <@&${loaded.config.roleId}> role to see the summary.`;
+        let since: string;
+        let label: string;
+        const tick = period === "tick" ? await ctx.tick() : null;
+        if (tick) {
+          since = tick;
+          label = "since the last BGS tick";
+        } else {
+          const days = period === "7d" ? 7 : 1;
+          since = new Date(ctx.now - days * 86_400_000).toISOString();
+          label = days === 7 ? "last 7 days" : "last 24 hours";
+        }
+        const actions = await readActions(ctx.api, loaded.channelId, ctx.env.DISCORD_APPLICATION_ID, since);
+        // What a member reported before their keys were cancelled still counts: it was done.
+        return summaryText(loaded.config.faction, label, actions);
+      });
+    }
+
+    default:
+      return reply("Unknown command.");
+  }
+}

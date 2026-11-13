@@ -1,0 +1,17 @@
+# EDCH-Discord (Cloudflare Worker, Discord "interactions" bot). It keeps no data: settings and
+# reports live in the #edch-bgs channel of each Discord server it is in. The same code runs as the
+# shared bot or as one squadron's own copy (DISCORD_GUILD_ID set). Set-up: README.md.
+# Secrets, never in this file:
+#   wrangler secret put DISCORD_PUBLIC_KEY   (developer portal → General Information → Public Key)
+#   wrangler secret put DISCORD_BOT_TOKEN    (developer portal → Bot → Reset Token)
+#   wrangler secret put LINK_SECRET          (any long random text: signs the keys given to EDCH)
+name = "edch-discord"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+[vars]
+# Developer portal → General Information → Application ID.
+DISCORD_APPLICATION_ID = ""
+# Empty: any server may add the bot (the shared bot). A server id: a squadron's own copy, that
+# answers this server only.
+DISCORD_GUILD_ID = ""

@@ -1,0 +1,89 @@
+// Shapes shared by the bot's parts: the Worker's environment, a server's settings, the actions
+// EDCH reports, and the few Discord calls the bot makes (real ones in discordRest.ts, a fake one
+// in the tests).
+
+/** The Worker's settings and secrets (wrangler.toml, `wrangler secret put`). */
+export interface Env {
+  DISCORD_PUBLIC_KEY: string;
+  DISCORD_BOT_TOKEN: string;
+  DISCORD_APPLICATION_ID: string;
+  /** Signs the keys given to EDCH (HMAC-SHA256). Changing it cancels every key. */
+  LINK_SECRET: string;
+  /** Empty for the shared bot; a server id for a squadron's own copy (that server only). */
+  DISCORD_GUILD_ID?: string;
+}
+
+/** A server's settings, kept in a pinned message of its #edch-bgs channel. */
+export interface GuildConfig {
+  /** The minor faction the squadron follows. */
+  faction: string;
+  /** The role a member needs to link EDCH and to report. */
+  roleId: string;
+  /** Keys cancelled by /bgs revoke: member → keys issued before this time (Unix seconds) refused. */
+  revoked: Record<string, number>;
+}
+
+/** What EDCH counts (docs/BGS_SYNC.md in EDCH). */
+export const ACTION_KINDS = [
+  "mission",
+  "missionFailed",
+  "missionAbandoned",
+  "bounty",
+  "combatBond",
+  "trade",
+  "blackMarket",
+  "exploration",
+  "crime",
+] as const;
+export type ActionKind = (typeof ACTION_KINDS)[number];
+
+/** One action of a report, checked. */
+export interface ReportAction {
+  at: string;
+  kind: ActionKind;
+  system: string;
+  influence?: number;
+  credits?: number;
+  against: boolean;
+}
+
+/** An action read back from the channel, with who reported it. */
+export interface StoredAction extends ReportAction {
+  userId: string;
+}
+
+/** A Discord message, as far as the bot needs it. */
+export interface DiscordMessage {
+  id: string;
+  content: string;
+  author: { id: string };
+  timestamp: string;
+}
+
+/** A server's channel, as far as the bot needs it. */
+export interface DiscordChannel {
+  id: string;
+  name: string;
+  /** 0 = text channel. */
+  type: number;
+}
+
+/**
+ * The Discord calls the bot makes. Every one names the server or channel it works on: the bot
+ * only ever passes those of the request it answers (a signed interaction, or a signed key).
+ */
+export interface DiscordApi {
+  /** The member's roles on the server, or null when they're not (or no longer) a member. */
+  memberRoles(guildId: string, userId: string): Promise<string[] | null>;
+  guildChannels(guildId: string): Promise<DiscordChannel[]>;
+  /** The channel's server (to check that a channel belongs to the server a key names). */
+  channelGuild(channelId: string): Promise<string | null>;
+  pinnedMessages(channelId: string): Promise<DiscordMessage[]>;
+  /** Messages after `afterId` (oldest first), at most 100. */
+  messagesAfter(channelId: string, afterId: string): Promise<DiscordMessage[]>;
+  sendMessage(channelId: string, content: string): Promise<DiscordMessage>;
+  editMessage(channelId: string, messageId: string, content: string): Promise<void>;
+  pinMessage(channelId: string, messageId: string): Promise<void>;
+  /** Replaces the answer to an interaction that was deferred (its token is valid 15 minutes). */
+  editInteractionReply(interactionToken: string, content: string): Promise<void>;
+}
