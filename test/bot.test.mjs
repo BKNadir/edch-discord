@@ -285,14 +285,14 @@ test("summary: by system, busiest first, within Discord's limit", () => {
   assert.match(summaryText("Faction A", "last 24 hours", []), /Nothing reported/);
 });
 
-test("setup: creates the EDCH-BGS role, the data channel and the reading channel", async () => {
+test("setup: creates the BGS role, the data channel and the reading channel", async () => {
   const discord = fakeDiscord();
   discord.addGuild(GUILD_A, { withChannel: false });
   discord.setMember(GUILD_A, ADMIN, []);
   const answer = await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "Faction A" }, { admin: true });
   assert.match(answer, /Created the role .*data, admins only.*for the role/);
   const guild = discord.guild(GUILD_A);
-  const role = guild.roles.find((r) => r.name === "EDCH-BGS");
+  const role = guild.roles.find((r) => r.name === "BGS");
   const sync = guild.channels.find((c) => c.name === "edch-sync");
   const reading = guild.channels.find((c) => c.name === "edch-bgs");
   assert.ok(role && sync && reading);

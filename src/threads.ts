@@ -5,7 +5,7 @@
 //   writes to it again, which reopens it.
 // - after each BGS tick, the first report of the new BGS day posts the past day's recap in the
 //   reading channel (the same text as /bgs summary).
-// All of it in #edch-bgs, the channel the EDCH-BGS role reads (the data stay in #edch-sync).
+// All of it in #edch-bgs, the channel the BGS role reads (the data stay in #edch-sync).
 // The raw data stays in the bot's spoiler messages (storage.ts); this is only for reading.
 
 import { summaryText, totalsBySystem, type SystemTotals, shortCredits } from "./summary.js";

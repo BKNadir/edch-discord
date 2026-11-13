@@ -28,7 +28,7 @@ const commands = [
       {
         type: SUB_COMMAND,
         name: "setup",
-        description: "Admins: the faction followed; creates the EDCH-BGS role, #edch-sync and #edch-bgs",
+        description: "Admins: the faction followed; creates the BGS role, #edch-sync and #edch-bgs",
         options: [
           {
             type: STRING,
@@ -37,7 +37,7 @@ const commands = [
             required: true,
             max_length: 120,
           },
-          { type: ROLE, name: "role", description: "Another role than EDCH-BGS for the members who report" },
+          { type: ROLE, name: "role", description: "Another role than BGS for the members who report" },
           {
             type: CHANNEL,
             name: "link_channel",
@@ -86,7 +86,7 @@ if (!response.ok) {
 }
 console.log("/bgs is declared.");
 
-// What the bot needs: create the EDCH-BGS role and its two channels (/bgs setup); in
+// What the bot needs: create the BGS role and its two channels (/bgs setup); in
 // #edch-sync see it, read its history, send, manage and pin messages; in #edch-bgs write one
 // thread per system.
 const VIEW_CHANNEL = 1n << 10n;

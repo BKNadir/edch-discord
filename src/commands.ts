@@ -4,7 +4,7 @@
 //
 // Admins only (Administrator or Manage Server; Discord lists subcommands to everyone, so the
 // bot checks the rights Discord signed with the command):
-//   /bgs setup faction [role] [link_channel]   the faction followed; creates the EDCH-BGS role,
+//   /bgs setup faction [role] [link_channel]   the faction followed; creates the BGS role,
 //       #edch-sync (data, admins only) and #edch-bgs (reading, the role) when missing;
 //       link_channel: the only channel where /bgs link works
 //   /bgs revoke member                          cancels a member's keys

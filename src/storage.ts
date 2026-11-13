@@ -2,7 +2,7 @@
 // - #edch-sync (admins and the bot only): the settings (faction, role, channels, cancelled keys)
 //   in a pinned message of the bot, as JSON, and each report as messages of the bot, the actions
 //   compressed in a spoiler (Discord allows 2000 characters per message).
-// - #edch-bgs (the EDCH-BGS role, admins, the bot): what people read, one thread per system and
+// - #edch-bgs (the BGS role, admins, the bot): what people read, one thread per system and
 //   the daily recap (threads.ts).
 // Reading or writing always goes through a channel the request was checked against (index.ts):
 // a server's data can't be read from another server.
@@ -22,7 +22,7 @@ export const SYNC_CHANNEL = "edch-sync";
 /** The channel people read (threads by system, daily recap), seen by the role. */
 export const BGS_CHANNEL = "edch-bgs";
 /** The role /bgs setup creates when none is given (or reuses, by this name). */
-export const ROLE_NAME = "EDCH-BGS";
+export const ROLE_NAME = "BGS";
 const CONFIG_MARK = '"edch":"config"';
 const REPORT_MARK = "edch:r1:";
 /** Room for the data in one message, after the readable line. */
