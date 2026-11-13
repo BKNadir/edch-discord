@@ -86,15 +86,18 @@ export async function handleApi(
   // (a right missing, Discord busy) is logged and doesn't refuse it.
   const stored = checked.actions.map((a) => ({ ...a, userId: claims.userId }));
   try {
+    // Threads and recap go to the reading channel (the data channel for an older set-up).
+    const readChannel = auth.config.bgsChannelId ?? claims.channelId;
     await postRecapIfNewTick(
       api,
       claims.channelId,
+      readChannel,
       env.DISCORD_APPLICATION_ID,
       auth.config,
       auth.configMessageId,
       await tick(),
     );
-    await writeThreadLines(api, claims.guildId, claims.channelId, claims.userId, stored);
+    await writeThreadLines(api, claims.guildId, readChannel, claims.userId, stored);
   } catch (error) {
     console.error(`threads: ${(error as Error)?.message ?? error}`);
   }

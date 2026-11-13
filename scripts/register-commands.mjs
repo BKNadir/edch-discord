@@ -1,4 +1,4 @@
-// Declares the /bgs command to Discord (once after creating the application, and after changing
+// Declares /bgs and /bgs-admin to Discord (once after creating the application, and after changing
 // the commands), then prints the link that adds the bot to a server.
 //   DISCORD_APPLICATION_ID=… DISCORD_BOT_TOKEN=… node scripts/register-commands.mjs
 // The token is read from the environment only; it is never written anywhere.
@@ -15,18 +15,23 @@ const STRING = 3;
 const USER = 6;
 const ROLE = 8;
 
+const CHANNEL = 7;
+/** Manage Server: who sees /bgs-admin by default (server admins can change it in Integrations). */
+const MANAGE_GUILD = String(1n << 5n);
+/** Servers only (not direct messages), installed on a server. */
+const inServers = { contexts: [0], integration_types: [0] };
+
 const commands = [
   {
-    name: "bgs",
-    description: "EDCH: your squadron's BGS work, reported by the EDCH app",
-    // Servers only (not direct messages), installed on a server.
-    contexts: [0],
-    integration_types: [0],
+    name: "bgs-admin",
+    description: "EDCH: configure the bot (admins)",
+    default_member_permissions: MANAGE_GUILD,
+    ...inServers,
     options: [
       {
         type: SUB_COMMAND,
         name: "setup",
-        description: "Admins: the faction followed; creates the BGS role and the #edch-bgs channel if needed",
+        description: "The faction followed; creates the EDCH-BGS role, #edch-sync and #edch-bgs if needed",
         options: [
           {
             type: STRING,
@@ -35,17 +40,30 @@ const commands = [
             required: true,
             max_length: 120,
           },
-          { type: ROLE, name: "role", description: "Another role than BGS for the members who report" },
+          { type: ROLE, name: "role", description: "Another role than EDCH-BGS for the members who report" },
+          {
+            type: CHANNEL,
+            name: "link_channel",
+            description: "The only channel where /bgs link works (anywhere by default)",
+            channel_types: [0],
+          },
         ],
       },
-      { type: SUB_COMMAND, name: "link", description: "Get the key that links your EDCH (only you see it)" },
-      { type: SUB_COMMAND, name: "unlink", description: "Cancel your EDCH keys" },
       {
         type: SUB_COMMAND,
         name: "revoke",
-        description: "Admins: cancel a member's EDCH keys",
+        description: "Cancel a member's EDCH keys",
         options: [{ type: USER, name: "member", description: "The member", required: true }],
       },
+    ],
+  },
+  {
+    name: "bgs",
+    description: "EDCH: your squadron's BGS work, reported by the EDCH app",
+    ...inServers,
+    options: [
+      { type: SUB_COMMAND, name: "link", description: "Get the key that links your EDCH (by direct message)" },
+      { type: SUB_COMMAND, name: "unlink", description: "Cancel your EDCH keys" },
       {
         type: SUB_COMMAND,
         name: "summary",
@@ -76,11 +94,11 @@ if (!response.ok) {
   console.error(`Discord refused the commands: ${response.status} ${await response.text()}`);
   process.exit(1);
 }
-console.log("/bgs is declared.");
+console.log("/bgs and /bgs-admin are declared.");
 
-// What the bot needs: create the BGS role and the #edch-bgs channel (/bgs setup), then in that
-// channel see it, read its history, send messages, pin (the settings), and write in one thread per
-// system.
+// What the bot needs: create the EDCH-BGS role and its two channels (/bgs-admin setup); in
+// #edch-sync see it, read its history, send, manage and pin messages; in #edch-bgs write one
+// thread per system.
 const VIEW_CHANNEL = 1n << 10n;
 const SEND_MESSAGES = 1n << 11n;
 const MANAGE_MESSAGES = 1n << 13n;

@@ -1,7 +1,9 @@
-// Where the data lives: the #edch-bgs channel of each server, and nowhere else.
-// - The settings (faction, role, cancelled keys) are a pinned message of the bot, as JSON.
-// - Each report is one or more messages of the bot: a readable line for the squadron, and the
-//   actions, compressed, in a spoiler (Discord allows 2000 characters per message).
+// Where the data lives: the server's own channels, and nowhere else.
+// - #edch-sync (admins and the bot only): the settings (faction, role, channels, cancelled keys)
+//   in a pinned message of the bot, as JSON, and each report as messages of the bot, the actions
+//   compressed in a spoiler (Discord allows 2000 characters per message).
+// - #edch-bgs (the EDCH-BGS role, admins, the bot): what people read, one thread per system and
+//   the daily recap (threads.ts).
 // Reading or writing always goes through a channel the request was checked against (index.ts):
 // a server's data can't be read from another server.
 
@@ -15,22 +17,23 @@ import {
   type StoredAction,
 } from "./types.js";
 
-/** The channel the bot uses on each server. */
-export const CHANNEL_NAME = "edch-bgs";
+/** The channel of the data, seen by the admins and the bot only. */
+export const SYNC_CHANNEL = "edch-sync";
+/** The channel people read (threads by system, daily recap), seen by the role. */
+export const BGS_CHANNEL = "edch-bgs";
+/** The role /bgs-admin setup creates when none is given (or reuses, by this name). */
+export const ROLE_NAME = "EDCH-BGS";
 const CONFIG_MARK = '"edch":"config"';
 const REPORT_MARK = "edch:r1:";
 /** Room for the data in one message, after the readable line. */
 const MAX_DATA_CHARS = 1700;
 const MAX_PAGES = 40;
 
-/** The server's #edch-bgs text channel, if there is one. */
-export async function findChannel(api: DiscordApi, guildId: string): Promise<string | null> {
+/** The server's text channel of that name (the data channel by default), if there is one. */
+export async function findChannel(api: DiscordApi, guildId: string, name = SYNC_CHANNEL): Promise<string | null> {
   const channels = await api.guildChannels(guildId);
-  return channels.find((channel) => channel.type === 0 && channel.name === CHANNEL_NAME)?.id ?? null;
+  return channels.find((channel) => channel.type === 0 && channel.name === name)?.id ?? null;
 }
-
-/** The role /bgs setup creates when none is given (or reuses, by this name). */
-export const ROLE_NAME = "BGS";
 
 const VIEW_CHANNEL = 1n << 10n;
 const SEND_MESSAGES = 1n << 11n;
@@ -41,25 +44,36 @@ const PIN_MESSAGES = 1n << 51n;
 const CREATE_PUBLIC_THREADS = 1n << 35n;
 const SEND_MESSAGES_IN_THREADS = 1n << 38n;
 
-/**
- * Who sees #edch-bgs: not @everyone; the role's members read it (and run /bgs there); the bot
- * reads, writes, manages and pins. Admins see every channel anyway.
- */
-export function channelOverwrites(guildId: string, roleId: string, botId: string): PermissionOverwrite[] {
+const hidden = (guildId: string): PermissionOverwrite => ({
+  id: guildId,
+  type: 0,
+  allow: "0",
+  deny: String(VIEW_CHANNEL),
+});
+
+/** #edch-sync: hidden from @everyone; the bot reads, writes, manages and pins. Admins see all. */
+export function syncOverwrites(guildId: string, botId: string): PermissionOverwrite[] {
   return [
-    { id: guildId, type: 0, allow: "0", deny: String(VIEW_CHANNEL) },
+    hidden(guildId),
+    {
+      id: botId,
+      type: 1,
+      allow: String(VIEW_CHANNEL | SEND_MESSAGES | MANAGE_MESSAGES | READ_MESSAGE_HISTORY | PIN_MESSAGES),
+      deny: "0",
+    },
+  ];
+}
+
+/** #edch-bgs: hidden from @everyone; the role reads it; the bot writes the threads and the recap. */
+export function bgsOverwrites(guildId: string, roleId: string, botId: string): PermissionOverwrite[] {
+  return [
+    hidden(guildId),
     { id: roleId, type: 0, allow: String(VIEW_CHANNEL | READ_MESSAGE_HISTORY | USE_APPLICATION_COMMANDS), deny: "0" },
     {
       id: botId,
       type: 1,
       allow: String(
-        VIEW_CHANNEL |
-          SEND_MESSAGES |
-          MANAGE_MESSAGES |
-          READ_MESSAGE_HISTORY |
-          PIN_MESSAGES |
-          CREATE_PUBLIC_THREADS |
-          SEND_MESSAGES_IN_THREADS,
+        VIEW_CHANNEL | SEND_MESSAGES | READ_MESSAGE_HISTORY | CREATE_PUBLIC_THREADS | SEND_MESSAGES_IN_THREADS,
       ),
       deny: "0",
     },
@@ -74,19 +88,16 @@ export async function ensureRole(api: DiscordApi, guildId: string): Promise<{ id
     : { id: await api.createRole(guildId, ROLE_NAME), created: true };
 }
 
-/** The #edch-bgs channel, created (private, see channelOverwrites) when the server has none. */
+/** The text channel of that name, created with these permissions when the server has none. */
 export async function ensureChannel(
   api: DiscordApi,
   guildId: string,
-  roleId: string,
-  botId: string,
+  name: string,
+  overwrites: PermissionOverwrite[],
 ): Promise<{ id: string; created: boolean }> {
-  const existing = await findChannel(api, guildId);
+  const existing = await findChannel(api, guildId, name);
   if (existing) return { id: existing, created: false };
-  return {
-    id: await api.createChannel(guildId, CHANNEL_NAME, channelOverwrites(guildId, roleId, botId)),
-    created: true,
-  };
+  return { id: await api.createChannel(guildId, name, overwrites), created: true };
 }
 
 /** The settings pinned in the channel by the bot (`botId`), with the message holding them. */
@@ -105,7 +116,18 @@ export async function readConfig(
       for (const [user, time] of Object.entries(raw.revoked ?? {}))
         if (/^\d{17,20}$/.test(user) && Number.isInteger(time)) revoked[user] = time as number;
       const recapTick = typeof raw.recap === "string" && Number.isFinite(Date.parse(raw.recap)) ? raw.recap : undefined;
-      return { config: { faction: raw.faction, roleId: raw.role, revoked, recapTick }, messageId: message.id };
+      const id = (value: unknown) => (typeof value === "string" && /^\d{17,20}$/.test(value) ? value : undefined);
+      return {
+        config: {
+          faction: raw.faction,
+          roleId: raw.role,
+          bgsChannelId: id(raw.bgs),
+          linkChannelId: id(raw.link),
+          revoked,
+          recapTick,
+        },
+        messageId: message.id,
+      };
     } catch {
       continue;
     }
@@ -120,10 +142,12 @@ export function configMessage(config: GuildConfig): string {
     v: 1,
     faction: config.faction,
     role: config.roleId,
+    bgs: config.bgsChannelId,
+    link: config.linkChannelId,
     revoked: config.revoked,
     recap: config.recapTick,
   });
-  return `**EDCH settings** (written by the bot: change them with /bgs setup)\nFaction: **${config.faction}** · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
+  return `**EDCH settings** (written by the bot: change them with /bgs-admin setup)\nFaction: **${config.faction}** · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
 }
 
 /** Writes the settings: edits the pinned message, or posts and pins a new one. */

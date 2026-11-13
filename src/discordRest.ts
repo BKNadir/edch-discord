@@ -112,6 +112,17 @@ export function discordRest(botToken: string): DiscordApi {
       const response = await call("PUT", `/channels/${channelId}/pins/${messageId}`);
       if (!response.ok) throw new Error(`Discord pin: ${response.status}`);
     },
+    async sendDirectMessage(userId, content) {
+      try {
+        const dm = await json<{ id: string }>("POST", "/users/@me/channels", { recipient_id: userId });
+        await json("POST", `/channels/${dm.id}/messages`, { content, ...quiet });
+        return true;
+      } catch (error) {
+        // 403: the member blocks direct messages from this server's members.
+        if (error instanceof DiscordHttpError && error.status === 403) return false;
+        throw error;
+      }
+    },
     async editInteractionReply(appId, interactionToken, content) {
       // The interaction's own token authorises this call, not the bot's.
       const response = await call(

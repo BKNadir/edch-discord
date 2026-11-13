@@ -4,7 +4,8 @@
 //   3 days is archived by Discord itself (a system gone quiet); the next report about that system
 //   writes to it again, which reopens it.
 // - after each BGS tick, the first report of the new BGS day posts the past day's recap in the
-//   channel (the same text as /bgs summary).
+//   reading channel (the same text as /bgs summary).
+// All of it in #edch-bgs, the channel the EDCH-BGS role reads (the data stay in #edch-sync).
 // The raw data stays in the bot's spoiler messages (storage.ts); this is only for reading.
 
 import { summaryText, totalsBySystem, type SystemTotals, shortCredits } from "./summary.js";
@@ -70,12 +71,13 @@ export async function writeThreadLines(
 }
 
 /**
- * After a new tick: the past BGS day's recap in the channel, once (the tick it was made for is
+ * After a new tick: the past BGS day's recap in the reading channel, once (the tick it was made for is
  * kept in the settings). The first time, only the tick is noted.
  */
 export async function postRecapIfNewTick(
   api: DiscordApi,
   channelId: string,
+  readChannelId: string,
   botId: string,
   config: GuildConfig,
   configMessageId: string,
@@ -87,6 +89,6 @@ export async function postRecapIfNewTick(
   if (!previous || previous > tick) return false;
   const actions = (await readActions(api, channelId, botId, previous)).filter((a) => a.at < tick);
   const day = `BGS day ${previous.slice(0, 16).replace("T", " ")} → ${tick.slice(11, 16)} UTC`;
-  await api.sendMessage(channelId, `📊 **Daily recap**\n${summaryText(config.faction, day, actions)}`);
+  await api.sendMessage(readChannelId, `📊 **Daily recap**\n${summaryText(config.faction, day, actions)}`);
   return true;
 }

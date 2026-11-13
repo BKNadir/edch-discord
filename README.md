@@ -9,49 +9,56 @@ It runs as a Cloudflare Worker that answers Discord's interactions: nothing to k
 
 ## Where the data is
 
-**The bot keeps nothing.** Each server's data lives in that server's private `#edch-bgs` channel:
+**The bot keeps nothing.** Each server's data lives in that server's own channels:
 
-- the settings (faction, role allowed, cancelled keys) in a message the bot pins;
-- each report in messages of the bot (a readable line, the data compressed in a spoiler).
-- for reading: one thread per system where the squadron works, with a line per report
-  ("@member · 3 missions (+7 inf.) · trade 12M"). Discord archives a thread after 3 days without a
-  line (a quiet system); the next report about it reopens it. After each BGS tick, the first
-  report posts the past day's recap in the channel.
+- **`#edch-sync`** (admins and the bot only): the settings (faction, role, channels, cancelled
+  keys) in a message the bot pins, and each report in messages of the bot, the data compressed in
+  a spoiler.
+- **`#edch-bgs`** (the `EDCH-BGS` role, admins and the bot), for reading: one thread per system
+  where the squadron works, with a line per report ("@member · 3 missions (+7 inf.) · trade 12M").
+  Discord archives a thread after 3 days without a line (a quiet system); the next report about it
+  reopens it. After each BGS tick, the first report posts the past day's recap there.
 
 A server's data is read only for that server: Discord signs every command with the server it comes
 from, and the key a member gives EDCH is signed by the bot with its server and channel (it can't be
 changed to name another). The tests check that a server never reads or writes another's
-(`test/bot.test.mjs`, "isolation"). Deleting the channel deletes everything.
+(`test/bot.test.mjs`, "isolation"). Deleting the two channels deletes everything.
 
 No commander names: a report is tied to the member's Discord account. EDCH sends nothing unless
 the member pastes their key and ticks the box.
 
-The shared bot's token can reach the `#edch-bgs` channel of every server it was added to. A
-squadron that doesn't want to depend on anyone can run its own copy (below).
+The shared bot's token can reach these channels on every server it was added to. A squadron that
+doesn't want to depend on anyone can run its own copy (below).
 
 ## Commands
 
-| Command                     | Who                           | What                                                                                        |
-| --------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------- |
-| `/bgs setup faction [role]` | admins (Manage Server)        | the faction followed; creates the `BGS` role and the private `#edch-bgs` channel if missing |
-| `/bgs link`                 | members with the role         | a key for EDCH (only they see it)                                                           |
-| `/bgs unlink`               | anyone                        | cancels their own keys                                                                      |
-| `/bgs revoke member`        | admins                        | cancels a member's keys                                                                     |
-| `/bgs summary [period]`     | members with the role, admins | the squadron's work since the tick, 24 hours or 7 days                                      |
+Commands leave nothing in the channel: every answer is seen by the member only.
 
-Removing the role stops a member's reports at once; their past reports still count.
+| Command                                          | Who                           | What                                                                                                                                                 |
+| ------------------------------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/bgs-admin setup faction [role] [link_channel]` | admins (Manage Server)        | the faction followed; creates the `EDCH-BGS` role, `#edch-sync` and `#edch-bgs` if missing; `link_channel`: the only channel where `/bgs link` works |
+| `/bgs-admin revoke member`                       | admins                        | cancels a member's keys                                                                                                                              |
+| `/bgs link`                                      | members with the role         | their EDCH key, by direct message (in the answer, seen by them only, when their DMs are closed)                                                      |
+| `/bgs unlink`                                    | anyone                        | cancels their own keys                                                                                                                               |
+| `/bgs summary [period]`                          | members with the role, admins | the squadron's work since the tick, 24 hours or 7 days                                                                                               |
+
+`/bgs-admin` is shown to members with Manage Server only (Server Settings → Integrations can change
+that), and the bot checks it again. Removing the role stops a member's reports at once; their past
+reports still count.
 
 ## For a squadron (shared bot)
 
-1. An admin adds the bot with the link given in EDCH (Sync → Connect to the Discord bot) or by its host.
-2. `/bgs setup faction:"Your faction"`, anywhere: the bot creates the **`BGS`** role and the
-   private **`#edch-bgs`** channel (seen by the role, the bot and the admins) when the server has
-   none, and pins its settings there. To use another role: `role:@YourRole`. Without the Manage
-   Roles and Manage Channels rights, create the channel yourself (private, the bot can see it, read
-   its history, send, manage and pin messages, create threads and write in them) and give `role`.
+1. An admin adds the bot with the link given in EDCH (Sync → Connect to the Discord bot) or by its
+   host.
+2. `/bgs-admin setup faction:"Your faction"`: the bot creates the **`EDCH-BGS`** role,
+   **`#edch-sync`** and **`#edch-bgs`** when they're missing, and pins its settings. Options:
+   `role:@YourRole` for another role, `link_channel:#channel` to allow `/bgs link` there only.
+   Without the Manage Roles and Manage Channels rights, create them yourself (private; in
+   `#edch-sync` the bot sees, reads the history, sends, manages and pins; in `#edch-bgs` it also
+   creates threads and writes in them) and give `role`.
 3. Give the role to the members who report.
-4. Each member: `/bgs link`, then in EDCH, Sync → Connect to the Discord bot, paste the key and tick "Send BGS
-   reports".
+4. Each member: `/bgs link`, then in EDCH, Sync → Connect to the Discord bot, paste the key from
+   the direct message and tick "Send BGS reports".
 
 ## Hosting it (the shared bot, or a squadron's own copy)
 

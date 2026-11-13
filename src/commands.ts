@@ -1,24 +1,31 @@
-// The /bgs command, answered from Discord's signed interactions. Discord tells which server, which
-// member and their roles and permissions: the bot trusts those (the signature is checked first,
-// index.ts) and never a server or channel typed by someone.
+// The bot's commands, answered from Discord's signed interactions. Discord tells which server,
+// channel and member, with the member's roles and permissions: the bot trusts those (the signature
+// is checked first, index.ts) and never a server or channel typed by someone.
 //
-//   /bgs setup faction [role] admins: the faction followed; creates the BGS role and the private
-//                             #edch-bgs channel when the server has none
-//   /bgs link                 members with the role: a key for their EDCH (only they see it)
-//   /bgs unlink               a member cancels their own keys
-//   /bgs revoke member        admins: cancel a member's keys
-//   /bgs summary [period]     members with the role: what the squadron did, by system
-//
+// Admins only (declared for Manage Server, so others don't even see them; checked here too):
+//   /bgs-admin setup faction [role] [link_channel]   the faction followed; creates the EDCH-BGS
+//       role, #edch-sync (data, admins only) and #edch-bgs (reading, the role) when missing;
+//       link_channel: the only channel where /bgs link works
+//   /bgs-admin revoke member                          cancels a member's keys
+// Members:
+//   /bgs link              members with the role: their EDCH key, by direct message
+//   /bgs unlink            a member cancels their own keys
+//   /bgs summary [period]  members with the role: what the squadron did, by system
+// Slash commands leave nothing in the channel: every answer is seen by the member only.
 // Answers that need Discord's API are deferred (Discord gives 3 seconds) and written after.
 
 import { makeKey } from "./key.js";
 import {
-  CHANNEL_NAME,
+  BGS_CHANNEL,
+  bgsOverwrites,
   ensureChannel,
   ensureRole,
   findChannel,
   readActions,
   readConfig,
+  ROLE_NAME,
+  SYNC_CHANNEL,
+  syncOverwrites,
   writeConfig,
 } from "./storage.js";
 import { summaryText } from "./summary.js";
@@ -57,6 +64,8 @@ interface Interaction {
   /** The bot's application (also its user id): Discord sends it with every interaction. */
   application_id: string;
   guild_id?: string;
+  /** The channel the command was typed in. */
+  channel_id?: string;
   member?: { user: { id: string }; roles: string[]; permissions: string };
   data?: { name: string; options?: { name: string; options?: { name: string; value: unknown }[] }[] };
 }
@@ -74,26 +83,28 @@ const isAdmin = (permissions: string) => {
   }
 };
 
-const NO_CHANNEL = `The EDCH bot isn't set up on this server yet (no **#${CHANNEL_NAME}** channel): an admin runs \`/bgs setup faction:…\`, which creates it.`;
-const MISSING_PERMISSIONS = `The bot couldn't create the role or the channel: it needs **Manage Roles** and **Manage Channels** (re-add it with the link, or give it these rights). Or create a private text channel **#${CHANNEL_NAME}** and a role yourself, then run \`/bgs setup\` again with \`role\`.`;
-const NOT_SET_UP = "The EDCH bot isn't set up on this server yet: an admin runs `/bgs setup` first.";
+const NO_CHANNEL = `The EDCH bot isn't set up on this server yet (no **#${SYNC_CHANNEL}** channel): an admin runs \`/bgs-admin setup faction:…\`, which creates it.`;
+const MISSING_PERMISSIONS = `The bot couldn't create the role or the channels: it needs **Manage Roles** and **Manage Channels** (re-add it with the link, or give it these rights). Or create the private text channels **#${SYNC_CHANNEL}** (admins and the bot) and **#${BGS_CHANNEL}** (the role and the bot) and a role yourself, then run \`/bgs-admin setup\` again with \`role\`.`;
+const NOT_SET_UP = "The EDCH bot isn't set up on this server yet: an admin runs `/bgs-admin setup` first.";
 
 /** Answers one interaction. */
 export async function handleInteraction(interaction: Interaction, ctx: Context): Promise<Answer> {
   if (interaction.type === 1) return { response: { type: PONG } };
-  if (interaction.type !== 2 || interaction.data?.name !== "bgs") return reply("Unknown command.");
+  const command = interaction.data?.name;
+  if (interaction.type !== 2 || (command !== "bgs" && command !== "bgs-admin")) return reply("Unknown command.");
   const guildId = interaction.guild_id;
   const member = interaction.member;
   if (!guildId || !member) return reply("The EDCH bot works in a server, not in direct messages.");
   if (ctx.env.DISCORD_GUILD_ID && guildId !== ctx.env.DISCORD_GUILD_ID)
     return reply("This copy of the EDCH bot belongs to another squadron: it does nothing here.");
 
-  const sub = interaction.data.options?.[0];
+  const sub = interaction.data?.options?.[0];
   const option = (name: string) => sub?.options?.find((o) => o.name === name)?.value;
   const userId = member.user.id;
   // The bot's id: from the settings, or from Discord's own message when it isn't set.
   const botId = ctx.env.DISCORD_APPLICATION_ID || interaction.application_id;
   const admin = isAdmin(member.permissions);
+  if (command === "bgs-admin" && !admin) return reply("Only admins (Manage Server) can configure the EDCH bot.");
 
   /** Runs `work` after a deferred answer, then writes its result as the answer. */
   const deferred = (work: () => Promise<string>): Answer => ({
@@ -130,41 +141,49 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
 
   switch (sub?.name) {
     case "setup": {
-      if (!admin) return reply("Only admins (Manage Server) can set the EDCH bot up.");
+      if (command !== "bgs-admin") return reply("Unknown command.");
       const givenRole = String(option("role") ?? "");
+      const linkChannel = String(option("link_channel") ?? "");
       const faction = String(option("faction") ?? "")
         .trim()
         .slice(0, 120);
-      if (!faction || (givenRole && !/^\d{17,20}$/.test(givenRole)))
-        return reply("Give the faction (and a role, if you want another one than BGS).");
+      const snowflake = (value: string) => !value || /^\d{17,20}$/.test(value);
+      if (!faction || !snowflake(givenRole) || !snowflake(linkChannel))
+        return reply(`Give the faction (and a role, if you want another one than ${ROLE_NAME}).`);
       return deferred(async () => {
         const made: string[] = [];
         let roleId = givenRole;
-        let channelId: string;
+        let syncId: string;
+        let bgsId: string;
         try {
           if (!roleId) {
             const role = await ensureRole(ctx.api, guildId);
             roleId = role.id;
             if (role.created) made.push(`the role <@&${roleId}>`);
           }
-          const channel = await ensureChannel(ctx.api, guildId, roleId, botId);
-          channelId = channel.id;
-          if (channel.created) made.push(`the private channel <#${channelId}>`);
+          const sync = await ensureChannel(ctx.api, guildId, SYNC_CHANNEL, syncOverwrites(guildId, botId));
+          syncId = sync.id;
+          if (sync.created) made.push(`<#${syncId}> (data, admins only)`);
+          const bgs = await ensureChannel(ctx.api, guildId, BGS_CHANNEL, bgsOverwrites(guildId, roleId, botId));
+          bgsId = bgs.id;
+          if (bgs.created) made.push(`<#${bgsId}> (for the role)`);
         } catch (error) {
           if (error instanceof DiscordHttpError && error.status === 403) return MISSING_PERMISSIONS;
           throw error;
         }
-        const found = await readConfig(ctx.api, channelId, botId);
+        const found = await readConfig(ctx.api, syncId, botId);
         const config: GuildConfig = {
           faction,
           roleId,
+          bgsChannelId: bgsId,
+          linkChannelId: linkChannel || undefined,
           revoked: found?.config.revoked ?? {},
           recapTick: found?.config.recapTick,
         };
-        await writeConfig(ctx.api, channelId, config, found?.messageId);
+        await writeConfig(ctx.api, syncId, config, found?.messageId);
         return [
-          made.length ? `Created ${made.join(" and ")}.` : "",
-          `Set up: the squadron follows **${faction}**. Give <@&${roleId}> to the members who report; they link EDCH with \`/bgs link\`. Reports go to <#${channelId}>.`,
+          made.length ? `Created ${made.join(", ")}.` : "",
+          `Set up: the squadron follows **${faction}**. Give <@&${roleId}> to the members who report; they link EDCH with \`/bgs link\`${linkChannel ? ` in <#${linkChannel}>` : ""}. The squadron's work shows in <#${bgsId}>.`,
         ]
           .filter(Boolean)
           .join("\n");
@@ -172,28 +191,34 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
     }
 
     case "link":
+      if (command !== "bgs") return reply("Unknown command.");
       return deferred(async () => {
         const loaded = await load();
         if (typeof loaded === "string") return loaded;
         if (!member.roles.includes(loaded.config.roleId))
           return `You need the <@&${loaded.config.roleId}> role to link EDCH: ask an admin.`;
+        if (loaded.config.linkChannelId && interaction.channel_id !== loaded.config.linkChannelId)
+          return `\`/bgs link\` works in <#${loaded.config.linkChannelId}> only.`;
         const key = await makeKey(
           { bot: ctx.botUrl, guildId, channelId: loaded.channelId, userId, issuedAt: Math.floor(ctx.now / 1000) },
           ctx.env.LINK_SECRET,
         );
-        return [
-          `Your EDCH key for **${loaded.config.faction}** (only you can see this message):`,
+        const text = [
+          `Your EDCH key for **${loaded.config.faction}**:`,
           "```",
           key,
           "```",
           'In EDCH: Sync → Connect to the Discord bot → paste the key and tick "Send BGS reports". Keep it to yourself: it reports in your name. `/bgs unlink` cancels it.',
         ].join("\n");
+        // By direct message, so it stays with the member; only they see this answer anyway.
+        if (await ctx.api.sendDirectMessage(userId, text)) return "Your EDCH key is in your direct messages.";
+        return `${text}\n(Your direct messages are closed to this server, so the key is here: only you can see it.)`;
       });
 
     case "unlink":
     case "revoke": {
       const target = sub.name === "unlink" ? userId : String(option("member") ?? "");
-      if (sub.name === "revoke" && !admin) return reply("Only admins (Manage Server) can cancel someone's keys.");
+      if ((sub.name === "revoke") !== (command === "bgs-admin")) return reply("Unknown command.");
       if (!/^\d{17,20}$/.test(target)) return reply("Choose a member.");
       return deferred(async () => {
         const loaded = await load();
@@ -207,6 +232,7 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
     }
 
     case "summary": {
+      if (command !== "bgs") return reply("Unknown command.");
       const period = String(option("period") ?? "tick");
       return deferred(async () => {
         const loaded = await load();

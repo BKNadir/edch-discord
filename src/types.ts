@@ -13,12 +13,16 @@ export interface Env {
   DISCORD_GUILD_ID?: string;
 }
 
-/** A server's settings, kept in a pinned message of its #edch-bgs channel. */
+/** A server's settings, kept in a pinned message of its #edch-sync channel. */
 export interface GuildConfig {
   /** The minor faction the squadron follows. */
   faction: string;
   /** The role a member needs to link EDCH and to report. */
   roleId: string;
+  /** The channel people read (threads by system, daily recap); the data channel when missing. */
+  bgsChannelId?: string;
+  /** The only channel where /bgs link works, when the admins chose one. */
+  linkChannelId?: string;
   /** Keys cancelled by /bgs revoke: member → keys issued before this time (Unix seconds) refused. */
   revoked: Record<string, number>;
   /** The tick of the last daily recap (ISO), so each BGS day gets one (threads.ts). */
@@ -105,6 +109,8 @@ export interface DiscordApi {
   sendMessage(channelId: string, content: string): Promise<DiscordMessage>;
   editMessage(channelId: string, messageId: string, content: string): Promise<void>;
   pinMessage(channelId: string, messageId: string): Promise<void>;
+  /** Sends a direct message; false when the member doesn't accept them from the server's members. */
+  sendDirectMessage(userId: string, content: string): Promise<boolean>;
   /** Replaces the answer to an interaction that was deferred (its token is valid 15 minutes). */
   editInteractionReply(applicationId: string, interactionToken: string, content: string): Promise<void>;
 }

@@ -15,6 +15,9 @@ export function fakeDiscord() {
   /** channelId → { guildId, messages: [], pins: Set } */
   const channels = new Map();
   const replies = [];
+  /** Direct messages sent: { userId, content }. Members in `closedDms` don't accept them. */
+  const dms = [];
+  const closedDms = new Set();
   const calls = [];
 
   const api = {
@@ -56,6 +59,11 @@ export function fakeDiscord() {
     },
     async pinMessage(channelId, messageId) {
       channels.get(channelId).pins.add(messageId);
+    },
+    async sendDirectMessage(userId, content) {
+      if (closedDms.has(userId)) return false;
+      dms.push({ userId, content });
+      return true;
     },
     async editInteractionReply(appId, token, content) {
       replies.push({ appId, token, content });
@@ -107,8 +115,10 @@ export function fakeDiscord() {
   return {
     api,
     replies,
+    dms,
+    closedDms,
     calls,
-    addGuild(guildId, { channelName = "edch-bgs", withChannel = true, readOnly = false } = {}) {
+    addGuild(guildId, { channelName = "edch-sync", withChannel = true, readOnly = false } = {}) {
       const channelId = newId();
       guilds.set(guildId, {
         channels: withChannel ? [{ id: channelId, name: channelName, type: 0 }] : [],

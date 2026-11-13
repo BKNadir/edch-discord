@@ -43,15 +43,24 @@ const ACTION = {
 };
 
 /** Runs a /bgs subcommand as `userId` (admin rights with `admin`), finishing deferred work. */
-async function bgs(discord, guildId, userId, roles, name, options = {}, { admin = false, extraEnv = {} } = {}) {
+async function bgs(
+  discord,
+  guildId,
+  userId,
+  roles,
+  name,
+  options = {},
+  { admin = false, extraEnv = {}, command, channelId } = {},
+) {
   const interaction = {
     type: 2,
     token: `token-${Math.random()}`,
     application_id: BOT_ID,
     guild_id: guildId,
+    channel_id: channelId,
     member: { user: { id: userId }, roles, permissions: admin ? "32" : "0" },
     data: {
-      name: "bgs",
+      name: command ?? (name === "setup" || name === "revoke" ? "bgs-admin" : "bgs"),
       options: [{ name, options: Object.entries(options).map(([n, value]) => ({ name: n, value })) }],
     },
   };
@@ -83,6 +92,16 @@ async function twoServers() {
 }
 
 const keyFrom = (text) => /```\n(edch1\.[^\n]+)\n```/.exec(text)?.[1];
+
+/** /bgs link, and the key it gave (by direct message, or in the answer when DMs are closed). */
+async function linkKey(discord, guildId, userId, roles, opts = {}) {
+  const before = discord.dms.length;
+  const answer = await bgs(discord, guildId, userId, roles, "link", {}, opts);
+  return discord.dms.length > before ? keyFrom(discord.dms.at(-1).content) : keyFrom(answer);
+}
+
+/** The reading channel (#edch-bgs) of a server. */
+const bgsChannel = (discord, guildId) => discord.guild(guildId).channels.find((c) => c.name === "edch-bgs").id;
 
 test("keys: signed claims read back; changed, foreign or broken keys refused", async () => {
   const claims = {
@@ -151,7 +170,7 @@ test("commands: setup for admins, link needs the role, the key works for EDCH", 
   assert.match(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "setup", { role: ROLE_A, faction: "X" }), /Only admins/);
   assert.equal((await readConfig(discord.api, channelA, BOT_ID)).config.faction, "Faction A");
   assert.match(await bgs(discord, GUILD_A, OUTSIDER, [], "link"), /You need the/);
-  const key = keyFrom(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link"));
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
   assert.ok(key);
   const config = await handleApi("GET", "/v1/config", `Bearer ${key}`, null, env(), discord.api);
   assert.deepEqual(config, { status: 200, body: { faction: "Faction A" } });
@@ -171,7 +190,7 @@ test("commands: setup for admins, link needs the role, the key works for EDCH", 
 
 test("isolation: a key of server A never reads or writes server B", async () => {
   const { discord, channelA, channelB } = await twoServers();
-  const key = keyFrom(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link"));
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
   await handleApi(
     "POST",
     "/v1/report",
@@ -227,7 +246,7 @@ test("isolation: messages written by someone else than the bot are never read as
 
 test("access: revoked keys, a lost role or a server that left are refused", async () => {
   const { discord } = await twoServers();
-  const key = keyFrom(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link"));
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
   const call = () => handleApi("GET", "/v1/config", `Bearer ${key}`, null, env(), discord.api);
   discord.setMember(GUILD_A, PILOT, []);
   assert.equal((await call()).body.error, "roleMissing");
@@ -245,7 +264,7 @@ test("own copy: a squadron's copy answers its server only", async () => {
   const { discord } = await twoServers();
   const own = { extraEnv: { DISCORD_GUILD_ID: GUILD_A } };
   assert.match(await bgs(discord, GUILD_B, ADMIN, [], "summary", {}, { admin: true, ...own }), /another squadron/);
-  const key = keyFrom(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link", {}, own));
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A], own);
   assert.equal(
     (await handleApi("GET", "/v1/config", `Bearer ${key}`, null, env({ DISCORD_GUILD_ID: GUILD_B }), discord.api)).body
       .error,
@@ -266,27 +285,64 @@ test("summary: by system, busiest first, within Discord's limit", () => {
   assert.match(summaryText("Faction A", "last 24 hours", []), /Nothing reported/);
 });
 
-test("setup: creates the BGS role and the private channel when the server has none", async () => {
+test("setup: creates the EDCH-BGS role, the data channel and the reading channel", async () => {
   const discord = fakeDiscord();
   discord.addGuild(GUILD_A, { withChannel: false });
   discord.setMember(GUILD_A, ADMIN, []);
   const answer = await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "Faction A" }, { admin: true });
-  assert.match(answer, /Created the role .* and the private channel/);
+  assert.match(answer, /Created the role .*data, admins only.*for the role/);
   const guild = discord.guild(GUILD_A);
-  const role = guild.roles.find((r) => r.name === "BGS");
-  const channel = guild.channels.find((c) => c.name === "edch-bgs");
-  assert.ok(role && channel);
-  const everyone = channel.overwrites.find((o) => o.id === GUILD_A);
-  assert.equal(everyone.deny, String(1n << 10n));
-  assert.ok(channel.overwrites.some((o) => o.id === role.id && o.type === 0));
-  assert.ok(channel.overwrites.some((o) => o.id === BOT_ID && o.type === 1));
-  assert.equal((await readConfig(discord.api, channel.id, BOT_ID)).config.roleId, role.id);
+  const role = guild.roles.find((r) => r.name === "EDCH-BGS");
+  const sync = guild.channels.find((c) => c.name === "edch-sync");
+  const reading = guild.channels.find((c) => c.name === "edch-bgs");
+  assert.ok(role && sync && reading);
+  // Data: hidden from everyone, the bot only (admins see every channel). Reading: the role.
+  assert.equal(sync.overwrites.find((o) => o.id === GUILD_A).deny, String(1n << 10n));
+  assert.ok(!sync.overwrites.some((o) => o.id === role.id));
+  assert.ok(reading.overwrites.some((o) => o.id === role.id && o.type === 0));
+  assert.ok(reading.overwrites.some((o) => o.id === BOT_ID && o.type === 1));
+  const { config } = await readConfig(discord.api, sync.id, BOT_ID);
+  assert.equal(config.roleId, role.id);
+  assert.equal(config.bgsChannelId, reading.id);
   // Again: nothing new is created, the settings are updated.
   const again = await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "Faction B" }, { admin: true });
   assert.doesNotMatch(again, /Created/);
   assert.equal(guild.roles.length, 1);
-  assert.equal(guild.channels.length, 1);
-  assert.equal((await readConfig(discord.api, channel.id, BOT_ID)).config.faction, "Faction B");
+  assert.equal(guild.channels.length, 2);
+  assert.equal((await readConfig(discord.api, sync.id, BOT_ID)).config.faction, "Faction B");
+});
+
+test("admin commands: refused to members, even under /bgs", async () => {
+  const { discord } = await twoServers();
+  assert.match(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "setup", { faction: "X" }), /Only admins/);
+  assert.match(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "revoke", { member: ADMIN }), /Only admins/);
+  assert.match(
+    await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "X" }, { admin: true, command: "bgs" }),
+    /Unknown/,
+  );
+});
+
+test("link: by direct message, in the chosen channel only, in the answer when DMs are closed", async () => {
+  const { discord } = await twoServers();
+  const linkChannel = "1600000000000000001";
+  await bgs(
+    discord,
+    GUILD_A,
+    ADMIN,
+    [],
+    "setup",
+    { role: ROLE_A, faction: "Faction A", link_channel: linkChannel },
+    { admin: true },
+  );
+  assert.match(
+    await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link", {}, { channelId: "1600000000000000009" }),
+    /works in/,
+  );
+  assert.match(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link", {}, { channelId: linkChannel }), /direct messages/);
+  assert.ok(keyFrom(discord.dms.at(-1).content));
+  discord.closedDms.add(PILOT);
+  const answer = await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link", {}, { channelId: linkChannel });
+  assert.ok(keyFrom(answer));
 });
 
 test("setup: without Manage Roles or Manage Channels, says what to do", async () => {
@@ -304,7 +360,7 @@ test("answers: written with the application id Discord sends", async () => {
 
 test("threads: one per system, a line per report, reopened after being archived", async () => {
   const { discord, channelA } = await twoServers();
-  const key = keyFrom(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link"));
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
   const send = (actions) =>
     handleApi("POST", "/v1/report", `Bearer ${key}`, JSON.stringify(report("Faction A", actions)), env(), discord.api);
   await send([
@@ -312,7 +368,7 @@ test("threads: one per system, a line per report, reopened after being archived"
     { ...ACTION, kind: "trade", influence: undefined, credits: 12_000_000 },
     { ...ACTION, system: "HIP 21991" },
   ]);
-  let threads = discord.threads(channelA);
+  let threads = discord.threads(bgsChannel(discord, GUILD_A));
   assert.deepEqual(Object.keys(threads).sort(), ["HIP 21991", "Synuefe XR-H d11-102"]);
   const line = threads["Synuefe XR-H d11-102"].messages[0].content;
   assert.match(line, new RegExp(`<@${PILOT}> · 1 mission \\(\\+3 inf\\.\\) · trade 12\\.0M`));
@@ -320,7 +376,7 @@ test("threads: one per system, a line per report, reopened after being archived"
   // Archived (3 days quiet), then a new report: the same thread, open again.
   discord.archive(threads["HIP 21991"].id);
   await send([{ ...ACTION, system: "HIP 21991", at: "2026-11-13T19:30:00Z" }]);
-  threads = discord.threads(channelA);
+  threads = discord.threads(bgsChannel(discord, GUILD_A));
   assert.equal(Object.keys(threads).length, 2);
   assert.equal(threads["HIP 21991"].messages.length, 2);
   assert.equal(threads["HIP 21991"].archived, false);
@@ -328,7 +384,7 @@ test("threads: one per system, a line per report, reopened after being archived"
 
 test("daily recap: once per tick, in the channel, for the past BGS day", async () => {
   const { discord, channelA } = await twoServers();
-  const key = keyFrom(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link"));
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
   const send = (actions, tick) =>
     handleApi(
       "POST",
@@ -339,7 +395,7 @@ test("daily recap: once per tick, in the channel, for the past BGS day", async (
       discord.api,
       async () => tick,
     );
-  const recaps = () => discord.messages(channelA).filter((m) => m.content.startsWith("📊"));
+  const recaps = () => discord.messages(bgsChannel(discord, GUILD_A)).filter((m) => m.content.startsWith("📊"));
   // First report: the tick is only noted.
   await send([{ ...ACTION, at: "2026-11-13T19:00:00Z" }], "2026-11-12T15:00:00.000Z");
   assert.equal(recaps().length, 0);
