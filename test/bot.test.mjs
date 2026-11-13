@@ -193,7 +193,7 @@ test("commands: setup for admins, link needs the role, the key works for EDCH", 
     env(),
     discord.api,
   );
-  assert.deepEqual(sent.body, { accepted: 1 });
+  assert.deepEqual(sent.body, { accepted: 1, systems: 0 });
   const summary = JSON.stringify(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "summary", { period: "7d" }));
   assert.match(summary, /Synuefe XR-H d11-102/);
   assert.match(summary, /\+3 inf/);
@@ -580,4 +580,90 @@ test("setup without a faction: channels and role first, factions added after", a
   assert.match(answer, /faction add/);
   const sync = discord.guild(GUILD_A).channels.find((c) => c.name === "edch-sync");
   assert.deepEqual((await readConfig(discord.api, sync.id, BOT_ID)).config.factions, []);
+});
+
+const seen = (system, influence, at, extra = {}) => ({
+  at,
+  system,
+  controlling: "Faction A",
+  factions: [
+    { name: "Faction A", influence, state: "Boom", active: ["Boom"], pending: [], recovering: [] },
+    { name: "Rival", influence: 100 - influence, state: "None", active: [], pending: [], recovering: [] },
+  ],
+  conflicts: [],
+  ...extra,
+});
+
+test("systems seen: shared with the server's members, a thread line only when it changed", async () => {
+  const { discord, channelA } = await twoServers();
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
+  const now = () => Date.parse("2026-11-13T20:00:00Z");
+  const send = (systems, faction = "Faction A") =>
+    handleApi(
+      "POST",
+      "/v1/report",
+      `Bearer ${key}`,
+      JSON.stringify({ ...report(faction, []), systems }),
+      env(),
+      discord.api,
+      async () => null,
+      now,
+    );
+  const elsewhere = {
+    ...seen("Nowhere", 50, "2026-11-13T18:00:00Z"),
+    factions: [{ name: "Strangers", influence: 100, state: "None", active: [], pending: [], recovering: [] }],
+  };
+  const first = await send([seen("Home", 40, "2026-11-13T18:00:00Z"), elsewhere]);
+  // Systems without a followed faction are dropped.
+  assert.deepEqual(first.body, { accepted: 0, systems: 1 });
+  let threads = discord.threads(bgsChannel(discord, GUILD_A));
+  assert.deepEqual(Object.keys(threads), ["Home"]);
+  assert.match(threads.Home.messages[0].content, /Faction A\*\* 40\.0 % \(Boom\) · closest Rival 60\.0 %/);
+  // The same again (a later visit, nothing changed): no line, the thread can archive.
+  await send([seen("Home", 40, "2026-11-13T19:00:00Z")]);
+  threads = discord.threads(bgsChannel(discord, GUILD_A));
+  assert.equal(threads.Home.messages.length, 1);
+  // Influence moved: a new line.
+  await send([seen("Home", 42.5, "2026-11-13T19:30:00Z")]);
+  threads = discord.threads(bgsChannel(discord, GUILD_A));
+  assert.equal(threads.Home.messages.length, 2);
+  // Every member's EDCH gets the newest of each system, without who sent it.
+  const shared = await handleApi("GET", "/v1/systems", `Bearer ${key}`, null, env(), discord.api, undefined, now);
+  assert.equal(shared.status, 200);
+  assert.equal(shared.body.systems.length, 1);
+  assert.equal(shared.body.systems[0].at, "2026-11-13T19:30:00.000Z");
+  assert.equal(shared.body.systems[0].factions[0].influence, 42.5);
+  assert.equal(shared.body.systems[0].userId, undefined);
+  // Malformed systems refuse the report; nothing of it is stored.
+  const before = discord.messages(channelA).length;
+  assert.equal((await send([{ ...seen("Bad", 30, "2026-11-13T19:40:00Z"), factions: "x" }])).body.error, "badFormat");
+  assert.equal((await send([seen("Bad", 300, "2026-11-13T19:40:00Z")])).body.error, "badFormat");
+  assert.equal(discord.messages(channelA).length, before);
+});
+
+test("systems seen: server B never gets A's systems", async () => {
+  const { discord } = await twoServers();
+  const keyA = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
+  discord.setMember(GUILD_B, OUTSIDER, [ROLE_B]);
+  const keyB = await linkKey(discord, GUILD_B, OUTSIDER, [ROLE_B]);
+  const now = () => Date.parse("2026-11-13T20:00:00Z");
+  const both = {
+    ...seen("Shared", 40, "2026-11-13T18:00:00Z"),
+    factions: [
+      { name: "Faction A", influence: 40, state: "None", active: [], pending: [], recovering: [] },
+      { name: "Faction B", influence: 60, state: "None", active: [], pending: [], recovering: [] },
+    ],
+  };
+  await handleApi(
+    "POST",
+    "/v1/report",
+    `Bearer ${keyA}`,
+    JSON.stringify({ ...report("Faction A", []), systems: [both] }),
+    env(),
+    discord.api,
+    undefined,
+    now,
+  );
+  const forB = await handleApi("GET", "/v1/systems", `Bearer ${keyB}`, null, env(), discord.api, undefined, now);
+  assert.deepEqual(forB.body.systems, []);
 });

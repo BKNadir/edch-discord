@@ -1,13 +1,15 @@
 // Where the data lives: the server's own channels, and nowhere else.
 // - #edch-sync (admins and the bot only): the settings (faction, role, channels, cancelled keys)
 //   in a pinned message of the bot, as JSON, and each report as messages of the bot, the actions
-//   compressed in a spoiler (Discord allows 2000 characters per message).
+//   and the systems seen (systems.ts) compressed in a spoiler (Discord allows 2000 characters per
+//   message).
 // - #edch-bgs (the BGS role, admins, the bot): what people read, one thread per system and
 //   the daily recap (threads.ts).
 // Reading or writing always goes through a channel the request was checked against (index.ts):
 // a server's data can't be read from another server.
 
 import { base64Url, fromBase64Url } from "./crypto.js";
+import { messageSnapshots, type StoredSnapshot } from "./systems.js";
 import {
   ACTION_KINDS,
   type DiscordApi,
@@ -250,17 +252,18 @@ export function snowflakeAt(time: number): string {
 }
 
 /**
- * The actions reported since `since` (ISO), read from the bot's messages of the channel; the
- * same action sent twice (EDCH retrying) counts once.
+ * What was reported since `since` (ISO), read from the bot's messages of the channel in one pass:
+ * the actions (the same action sent twice, EDCH retrying, counts once) and the systems seen.
  */
-export async function readActions(
+export async function readData(
   api: DiscordApi,
   channelId: string,
   botId: string,
   since: string,
-): Promise<StoredAction[]> {
+): Promise<{ actions: StoredAction[]; snapshots: StoredSnapshot[] }> {
   const seen = new Set<string>();
   const actions: StoredAction[] = [];
+  const snapshots: StoredSnapshot[] = [];
   let after = snowflakeAt(Date.parse(since) - 60_000);
   for (let page = 0; page < MAX_PAGES; page++) {
     const messages = await api.messagesAfter(channelId, after);
@@ -273,9 +276,21 @@ export async function readActions(
         seen.add(key);
         actions.push(action);
       }
+      for (const snapshot of await messageSnapshots(message.content))
+        if (snapshot.at >= since) snapshots.push(snapshot);
     }
     after = messages[messages.length - 1].id;
     if (messages.length < 100) break;
   }
-  return actions;
+  return { actions, snapshots };
+}
+
+/** The actions reported since `since` (ISO). */
+export async function readActions(
+  api: DiscordApi,
+  channelId: string,
+  botId: string,
+  since: string,
+): Promise<StoredAction[]> {
+  return (await readData(api, channelId, botId, since)).actions;
 }

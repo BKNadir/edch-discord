@@ -1,8 +1,9 @@
 // The readable side of #edch-bgs, for admins and members:
-// - one thread per system where the squadron works (named like the system): each report adds a
-//   line there ("<@member> · 3 missions (+7 inf.) · trade 12M"). A thread with no new line for
-//   3 days is archived by Discord itself (a system gone quiet); the next report about that system
-//   writes to it again, which reopens it.
+// - one thread per system where the squadron works or a followed faction is (named like the
+//   system): each report adds a line there ("<@member> · 3 missions (+7 inf.) · trade 12M"), and
+//   so does a member's visit when the factions' influence or states changed ("🛰️ <@member> ·
+//   Faction 34.2 % (Boom) · closest Rival 30.1 %"). A thread with no new line for 3 days is
+//   archived by Discord itself (a system gone quiet or stable); the next line reopens it.
 // - after each BGS tick, the first report of the new BGS day posts the past day's recap in the
 //   reading channel (the same text as /bgs summary).
 // All of it in #edch-bgs, the channel the BGS role reads (the data stay in #edch-sync).
@@ -11,6 +12,7 @@
 import { summaryEmbeds, totalsBySystem, type SystemTotals, shortCredits } from "./summary.js";
 import type { DiscordApi, GuildConfig, StoredAction } from "./types.js";
 import { readActions, writeConfig } from "./storage.js";
+import { changedSince, snapshotLine, type StoredSnapshot, type SystemSnapshot } from "./systems.js";
 
 /** Discord archives a thread after this long without a message: 3 days, "stable". */
 export const ARCHIVE_AFTER_MINUTES = 3 * 24 * 60;
@@ -37,7 +39,7 @@ export function threadLine(userId: string, t: SystemTotals, faction?: string): s
 }
 
 /** The channel's threads by name, archived ones included (the most recent of each name). */
-async function threadsByName(api: DiscordApi, guildId: string, channelId: string): Promise<Map<string, string>> {
+export async function threadsByName(api: DiscordApi, guildId: string, channelId: string): Promise<Map<string, string>> {
   const byName = new Map<string, string>();
   for (const thread of await api.archivedThreads(channelId)) byName.set(thread.name.toLowerCase(), thread.id);
   for (const thread of await api.activeThreads(guildId))
@@ -59,16 +61,54 @@ export async function writeThreadLines(
   const threads = await threadsByName(api, guildId, channelId);
   let written = 0;
   for (const t of totals) {
-    const name = threadName(t.system);
-    let threadId = threads.get(name.toLowerCase());
-    if (!threadId) {
-      threadId = await api.createThread(channelId, name, ARCHIVE_AFTER_MINUTES);
-      threads.set(name.toLowerCase(), threadId);
-    }
-    await api.sendMessage(threadId, threadLine(userId, t, faction));
+    await api.sendMessage(await threadFor(api, channelId, threads, t.system), threadLine(userId, t, faction));
     written += 1;
   }
   return written;
+}
+
+/** The thread of a system: the existing one (archived ones reopen when written to), or a new one. */
+async function threadFor(api: DiscordApi, channelId: string, threads: Map<string, string>, system: string) {
+  const name = threadName(system);
+  let threadId = threads.get(name.toLowerCase());
+  if (!threadId) {
+    threadId = await api.createThread(channelId, name, ARCHIVE_AFTER_MINUTES);
+    threads.set(name.toLowerCase(), threadId);
+  }
+  return threadId;
+}
+
+/**
+ * Writes what a member saw in each system to its thread, when it changed since the newest
+ * snapshot the server had (`previous`): a stable system gets no line, so Discord archives its
+ * thread after 3 days; a change reopens it.
+ */
+export async function writeSnapshotLines(
+  api: DiscordApi,
+  guildId: string,
+  channelId: string,
+  userId: string,
+  snapshots: SystemSnapshot[],
+  followed: string[],
+  previous: StoredSnapshot[],
+): Promise<number> {
+  const before = new Map(previous.map((s) => [s.system.toLowerCase(), s]));
+  const changed = [...snapshots]
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .filter((s, i, all) => all.findIndex((o) => o.system.toLowerCase() === s.system.toLowerCase()) === i)
+    .filter((s) => {
+      const known = before.get(s.system.toLowerCase());
+      return (!known || s.at > known.at) && changedSince(known, s, followed);
+    })
+    .slice(0, MAX_THREADS_PER_REPORT);
+  if (!changed.length) return 0;
+  const threads = await threadsByName(api, guildId, channelId);
+  for (const snapshot of changed)
+    await api.sendMessage(
+      await threadFor(api, channelId, threads, snapshot.system),
+      snapshotLine(userId, snapshot, followed),
+    );
+  return changed.length;
 }
 
 /**

@@ -15,7 +15,9 @@ It runs as a Cloudflare Worker that answers Discord's interactions: nothing to k
   keys) in a message the bot pins, and each report in messages of the bot, the data compressed in
   a spoiler.
 - **`#edch-bgs`** (the `BGS` role, admins and the bot), for reading: one thread per system
-  where the squadron works, with a line per report ("@member · 3 missions (+7 inf.) · trade 12M").
+  where the squadron works or a followed faction is, with a line per report ("@member · 3 missions
+  (+7 inf.) · trade 12M") and a line when a member's visit shows the influence or states changed
+  ("🛰️ @member · Faction 34.2 % (Boom) · closest Rival 30.1 %").
   Discord archives a thread after 3 days without a line (a quiet system); the next report about it
   reopens it. After each BGS tick, the first report posts the past day's recap there.
 
@@ -23,6 +25,12 @@ A server's data is read only for that server: Discord signs every command with t
 from, and the key a member gives EDCH is signed by the bot with its server and channel (it can't be
 changed to name another). The tests check that a server never reads or writes another's
 (`test/bot.test.mjs`, "isolation"). Deleting the two channels deletes everything.
+
+**Systems seen are shared.** When a member arrives in a system where a followed faction is, EDCH
+sends what the game shows there (factions, influence, states, conflicts: public game data). The bot
+keeps the newest of each system for 7 days and gives it to the other members' EDCH
+(`GET /v1/systems`), which shows it in its BGS page as private data, marked with a Discord icon.
+Systems without a followed faction are dropped.
 
 No commander names: a report is tied to the member's Discord account. EDCH sends nothing unless
 the member pastes their key and ticks the box.
