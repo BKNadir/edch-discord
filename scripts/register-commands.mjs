@@ -26,9 +26,8 @@ const commands = [
       {
         type: SUB_COMMAND,
         name: "setup",
-        description: "Admins: the faction the squadron follows and the role allowed to report",
+        description: "Admins: the faction followed; creates the BGS role and the #edch-bgs channel if needed",
         options: [
-          { type: ROLE, name: "role", description: "Members with this role can link EDCH", required: true },
           {
             type: STRING,
             name: "faction",
@@ -36,6 +35,7 @@ const commands = [
             required: true,
             max_length: 120,
           },
+          { type: ROLE, name: "role", description: "Another role than BGS for the members who report" },
         ],
       },
       { type: SUB_COMMAND, name: "link", description: "Get the key that links your EDCH (only you see it)" },
@@ -78,13 +78,17 @@ if (!response.ok) {
 }
 console.log("/bgs is declared.");
 
-// What the bot needs in #edch-bgs: see it, read its history, send messages, pin (the settings).
+// What the bot needs: create the BGS role and the #edch-bgs channel (/bgs setup), then in that
+// channel see it, read its history, send messages, pin (the settings).
 const VIEW_CHANNEL = 1n << 10n;
 const SEND_MESSAGES = 1n << 11n;
 const MANAGE_MESSAGES = 1n << 13n;
 const READ_MESSAGE_HISTORY = 1n << 16n;
 const PIN_MESSAGES = 1n << 51n;
-const permissions = VIEW_CHANNEL | SEND_MESSAGES | MANAGE_MESSAGES | READ_MESSAGE_HISTORY | PIN_MESSAGES;
+const MANAGE_CHANNELS = 1n << 4n;
+const MANAGE_ROLES = 1n << 28n;
+const permissions =
+  MANAGE_CHANNELS | MANAGE_ROLES | VIEW_CHANNEL | SEND_MESSAGES | MANAGE_MESSAGES | READ_MESSAGE_HISTORY | PIN_MESSAGES;
 console.log(
   `Add the bot to a server (needs Manage Server there):\nhttps://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot%20applications.commands&permissions=${permissions}`,
 );

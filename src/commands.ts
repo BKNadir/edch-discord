@@ -2,7 +2,8 @@
 // member and their roles and permissions: the bot trusts those (the signature is checked first,
 // index.ts) and never a server or channel typed by someone.
 //
-//   /bgs setup role faction   admins: the faction followed and the role allowed (in #edch-bgs)
+//   /bgs setup faction [role] admins: the faction followed; creates the BGS role and the private
+//                             #edch-bgs channel when the server has none
 //   /bgs link                 members with the role: a key for their EDCH (only they see it)
 //   /bgs unlink               a member cancels their own keys
 //   /bgs revoke member        admins: cancel a member's keys
@@ -11,9 +12,17 @@
 // Answers that need Discord's API are deferred (Discord gives 3 seconds) and written after.
 
 import { makeKey } from "./key.js";
-import { CHANNEL_NAME, findChannel, readActions, readConfig, writeConfig } from "./storage.js";
+import {
+  CHANNEL_NAME,
+  ensureChannel,
+  ensureRole,
+  findChannel,
+  readActions,
+  readConfig,
+  writeConfig,
+} from "./storage.js";
 import { summaryText } from "./summary.js";
-import type { DiscordApi, Env, GuildConfig } from "./types.js";
+import { type DiscordApi, DiscordHttpError, type Env, type GuildConfig } from "./types.js";
 
 /** Permission bits: Administrator, Manage Server. */
 const ADMINISTRATOR = 0x8n;
@@ -45,6 +54,8 @@ export interface Answer {
 interface Interaction {
   type: number;
   token: string;
+  /** The bot's application (also its user id): Discord sends it with every interaction. */
+  application_id: string;
   guild_id?: string;
   member?: { user: { id: string }; roles: string[]; permissions: string };
   data?: { name: string; options?: { name: string; options?: { name: string; value: unknown }[] }[] };
@@ -64,6 +75,7 @@ const isAdmin = (permissions: string) => {
 };
 
 const NO_CHANNEL = `Create a private text channel named **#${CHANNEL_NAME}** where the bot can see the channel, read its history, send and manage messages, then try again. Everything the bot keeps is in that channel.`;
+const MISSING_PERMISSIONS = `The bot couldn't create the role or the channel: it needs **Manage Roles** and **Manage Channels** (re-add it with the link, or give it these rights). Or create a private text channel **#${CHANNEL_NAME}** and a role yourself, then run \`/bgs setup\` again with \`role\`.`;
 const NOT_SET_UP = "The EDCH bot isn't set up on this server yet: an admin runs `/bgs setup` first.";
 
 /** Answers one interaction. */
@@ -79,6 +91,8 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
   const sub = interaction.data.options?.[0];
   const option = (name: string) => sub?.options?.find((o) => o.name === name)?.value;
   const userId = member.user.id;
+  // The bot's id: from the settings, or from Discord's own message when it isn't set.
+  const botId = ctx.env.DISCORD_APPLICATION_ID || interaction.application_id;
   const admin = isAdmin(member.permissions);
 
   /** Runs `work` after a deferred answer, then writes its result as the answer. */
@@ -88,10 +102,21 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
       let content: string;
       try {
         content = await work();
-      } catch {
-        content = "Something went wrong talking to Discord. Try again in a moment.";
+      } catch (error) {
+        // Shown in `wrangler tail`: what failed, never a secret.
+        console.error(`/bgs ${sub?.name}: ${(error as Error)?.message ?? error}`);
+        content =
+          error instanceof DiscordHttpError && error.status === 401
+            ? "The bot's token is wrong: its host sets DISCORD_BOT_TOKEN again (wrangler secret put) and deploys."
+            : error instanceof DiscordHttpError && error.status === 403
+              ? MISSING_PERMISSIONS
+              : "Something went wrong talking to Discord. Try again in a moment.";
       }
-      await ctx.api.editInteractionReply(interaction.token, content);
+      try {
+        await ctx.api.editInteractionReply(interaction.application_id, interaction.token, content);
+      } catch (error) {
+        console.error(`/bgs ${sub?.name}: the answer couldn't be written: ${(error as Error)?.message ?? error}`);
+      }
     },
   });
 
@@ -99,25 +124,45 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
   const load = async (): Promise<{ channelId: string; config: GuildConfig; messageId: string } | string> => {
     const channelId = await findChannel(ctx.api, guildId);
     if (!channelId) return NO_CHANNEL;
-    const found = await readConfig(ctx.api, channelId, ctx.env.DISCORD_APPLICATION_ID);
+    const found = await readConfig(ctx.api, channelId, botId);
     return found ? { channelId, ...found } : NOT_SET_UP;
   };
 
   switch (sub?.name) {
     case "setup": {
       if (!admin) return reply("Only admins (Manage Server) can set the EDCH bot up.");
-      const roleId = String(option("role") ?? "");
+      const givenRole = String(option("role") ?? "");
       const faction = String(option("faction") ?? "")
         .trim()
         .slice(0, 120);
-      if (!/^\d{17,20}$/.test(roleId) || !faction) return reply("Give the role and the faction.");
+      if (!faction || (givenRole && !/^\d{17,20}$/.test(givenRole)))
+        return reply("Give the faction (and a role, if you want another one than BGS).");
       return deferred(async () => {
-        const channelId = await findChannel(ctx.api, guildId);
-        if (!channelId) return NO_CHANNEL;
-        const found = await readConfig(ctx.api, channelId, ctx.env.DISCORD_APPLICATION_ID);
+        const made: string[] = [];
+        let roleId = givenRole;
+        let channelId: string;
+        try {
+          if (!roleId) {
+            const role = await ensureRole(ctx.api, guildId);
+            roleId = role.id;
+            if (role.created) made.push(`the role <@&${roleId}>`);
+          }
+          const channel = await ensureChannel(ctx.api, guildId, roleId, botId);
+          channelId = channel.id;
+          if (channel.created) made.push(`the private channel <#${channelId}>`);
+        } catch (error) {
+          if (error instanceof DiscordHttpError && error.status === 403) return MISSING_PERMISSIONS;
+          throw error;
+        }
+        const found = await readConfig(ctx.api, channelId, botId);
         const config: GuildConfig = { faction, roleId, revoked: found?.config.revoked ?? {} };
         await writeConfig(ctx.api, channelId, config, found?.messageId);
-        return `Set up: the squadron follows **${faction}**; members with <@&${roleId}> can link EDCH with \`/bgs link\`. Reports go to <#${channelId}>.`;
+        return [
+          made.length ? `Created ${made.join(" and ")}.` : "",
+          `Set up: the squadron follows **${faction}**. Give <@&${roleId}> to the members who report; they link EDCH with \`/bgs link\`. Reports go to <#${channelId}>.`,
+        ]
+          .filter(Boolean)
+          .join("\n");
       });
     }
 
@@ -174,7 +219,7 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
           since = new Date(ctx.now - days * 86_400_000).toISOString();
           label = days === 7 ? "last 7 days" : "last 24 hours";
         }
-        const actions = await readActions(ctx.api, loaded.channelId, ctx.env.DISCORD_APPLICATION_ID, since);
+        const actions = await readActions(ctx.api, loaded.channelId, botId, since);
         // What a member reported before their keys were cancelled still counts: it was done.
         return summaryText(loaded.config.faction, label, actions);
       });

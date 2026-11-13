@@ -6,7 +6,14 @@
 // a server's data can't be read from another server.
 
 import { base64Url, fromBase64Url } from "./crypto.js";
-import { ACTION_KINDS, type DiscordApi, type GuildConfig, type ReportAction, type StoredAction } from "./types.js";
+import {
+  ACTION_KINDS,
+  type DiscordApi,
+  type GuildConfig,
+  type PermissionOverwrite,
+  type ReportAction,
+  type StoredAction,
+} from "./types.js";
 
 /** The channel the bot uses on each server. */
 export const CHANNEL_NAME = "edch-bgs";
@@ -20,6 +27,56 @@ const MAX_PAGES = 40;
 export async function findChannel(api: DiscordApi, guildId: string): Promise<string | null> {
   const channels = await api.guildChannels(guildId);
   return channels.find((channel) => channel.type === 0 && channel.name === CHANNEL_NAME)?.id ?? null;
+}
+
+/** The role /bgs setup creates when none is given (or reuses, by this name). */
+export const ROLE_NAME = "BGS";
+
+const VIEW_CHANNEL = 1n << 10n;
+const SEND_MESSAGES = 1n << 11n;
+const MANAGE_MESSAGES = 1n << 13n;
+const READ_MESSAGE_HISTORY = 1n << 16n;
+const USE_APPLICATION_COMMANDS = 1n << 31n;
+const PIN_MESSAGES = 1n << 51n;
+
+/**
+ * Who sees #edch-bgs: not @everyone; the role's members read it (and run /bgs there); the bot
+ * reads, writes, manages and pins. Admins see every channel anyway.
+ */
+export function channelOverwrites(guildId: string, roleId: string, botId: string): PermissionOverwrite[] {
+  return [
+    { id: guildId, type: 0, allow: "0", deny: String(VIEW_CHANNEL) },
+    { id: roleId, type: 0, allow: String(VIEW_CHANNEL | READ_MESSAGE_HISTORY | USE_APPLICATION_COMMANDS), deny: "0" },
+    {
+      id: botId,
+      type: 1,
+      allow: String(VIEW_CHANNEL | SEND_MESSAGES | MANAGE_MESSAGES | READ_MESSAGE_HISTORY | PIN_MESSAGES),
+      deny: "0",
+    },
+  ];
+}
+
+/** The role named ROLE_NAME (any case), created when the server has none. */
+export async function ensureRole(api: DiscordApi, guildId: string): Promise<{ id: string; created: boolean }> {
+  const existing = (await api.guildRoles(guildId)).find((r) => r.name.toLowerCase() === ROLE_NAME.toLowerCase());
+  return existing
+    ? { id: existing.id, created: false }
+    : { id: await api.createRole(guildId, ROLE_NAME), created: true };
+}
+
+/** The #edch-bgs channel, created (private, see channelOverwrites) when the server has none. */
+export async function ensureChannel(
+  api: DiscordApi,
+  guildId: string,
+  roleId: string,
+  botId: string,
+): Promise<{ id: string; created: boolean }> {
+  const existing = await findChannel(api, guildId);
+  if (existing) return { id: existing, created: false };
+  return {
+    id: await api.createChannel(guildId, CHANNEL_NAME, channelOverwrites(guildId, roleId, botId)),
+    created: true,
+  };
 }
 
 /** The settings pinned in the channel by the bot (`botId`), with the message holding them. */

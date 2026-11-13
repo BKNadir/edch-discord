@@ -28,7 +28,7 @@ async function lastTick(): Promise<string | null> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const api = discordRest(env.DISCORD_BOT_TOKEN, env.DISCORD_APPLICATION_ID);
+    const api = discordRest(env.DISCORD_BOT_TOKEN);
 
     if (url.pathname === "/interactions" && request.method === "POST") {
       const body = await request.text();

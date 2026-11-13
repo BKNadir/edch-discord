@@ -27,22 +27,25 @@ squadron that doesn't want to depend on anyone can run its own copy (below).
 
 ## Commands
 
-| Command                   | Who                           | What                                                          |
-| ------------------------- | ----------------------------- | ------------------------------------------------------------- |
-| `/bgs setup role faction` | admins (Manage Server)        | the faction followed and the role allowed; run in `#edch-bgs` |
-| `/bgs link`               | members with the role         | a key for EDCH (only they see it)                             |
-| `/bgs unlink`             | anyone                        | cancels their own keys                                        |
-| `/bgs revoke member`      | admins                        | cancels a member's keys                                       |
-| `/bgs summary [period]`   | members with the role, admins | the squadron's work since the tick, 24 hours or 7 days        |
+| Command                     | Who                           | What                                                                                        |
+| --------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------- |
+| `/bgs setup faction [role]` | admins (Manage Server)        | the faction followed; creates the `BGS` role and the private `#edch-bgs` channel if missing |
+| `/bgs link`                 | members with the role         | a key for EDCH (only they see it)                                                           |
+| `/bgs unlink`               | anyone                        | cancels their own keys                                                                      |
+| `/bgs revoke member`        | admins                        | cancels a member's keys                                                                     |
+| `/bgs summary [period]`     | members with the role, admins | the squadron's work since the tick, 24 hours or 7 days                                      |
 
 Removing the role stops a member's reports at once; their past reports still count.
 
 ## For a squadron (shared bot)
 
 1. An admin adds the bot with the link given in EDCH (Sync → Connect to the Discord bot) or by its host.
-2. Create a private text channel named **`#edch-bgs`**: the bot needs to see it, read its history,
-   send and manage messages (to pin its settings). Members don't need to see it.
-3. In that channel: `/bgs setup role:@YourRole faction:"Your faction"`.
+2. `/bgs setup faction:"Your faction"`, anywhere: the bot creates the **`BGS`** role and the
+   private **`#edch-bgs`** channel (seen by the role, the bot and the admins) when the server has
+   none, and pins its settings there. To use another role: `role:@YourRole`. Without the Manage
+   Roles and Manage Channels rights, create the channel yourself (private, the bot can see it, read
+   its history, send, manage and pin messages) and give `role`.
+3. Give the role to the members who report.
 4. Each member: `/bgs link`, then in EDCH, Sync → Connect to the Discord bot, paste the key and tick "Send BGS
    reports".
 

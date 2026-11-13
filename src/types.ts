@@ -60,6 +60,14 @@ export interface DiscordMessage {
   timestamp: string;
 }
 
+/** A channel permission overwrite: a role (type 0) or a member (type 1), bits as strings. */
+export interface PermissionOverwrite {
+  id: string;
+  type: 0 | 1;
+  allow: string;
+  deny: string;
+}
+
 /** A server's channel, as far as the bot needs it. */
 export interface DiscordChannel {
   id: string;
@@ -76,6 +84,11 @@ export interface DiscordApi {
   /** The member's roles on the server, or null when they're not (or no longer) a member. */
   memberRoles(guildId: string, userId: string): Promise<string[] | null>;
   guildChannels(guildId: string): Promise<DiscordChannel[]>;
+  guildRoles(guildId: string): Promise<{ id: string; name: string }[]>;
+  /** Creates a role without any permission of its own (needs Manage Roles). */
+  createRole(guildId: string, name: string): Promise<string>;
+  /** Creates a text channel with these permission overwrites (needs Manage Channels). */
+  createChannel(guildId: string, name: string, overwrites: PermissionOverwrite[]): Promise<string>;
   /** The channel's server (to check that a channel belongs to the server a key names). */
   channelGuild(channelId: string): Promise<string | null>;
   pinnedMessages(channelId: string): Promise<DiscordMessage[]>;
@@ -85,5 +98,15 @@ export interface DiscordApi {
   editMessage(channelId: string, messageId: string, content: string): Promise<void>;
   pinMessage(channelId: string, messageId: string): Promise<void>;
   /** Replaces the answer to an interaction that was deferred (its token is valid 15 minutes). */
-  editInteractionReply(interactionToken: string, content: string): Promise<void>;
+  editInteractionReply(applicationId: string, interactionToken: string, content: string): Promise<void>;
+}
+
+/** Discord refused a call; `status` 403 means the bot lacks a permission. */
+export class DiscordHttpError extends Error {
+  constructor(
+    readonly status: number,
+    what: string,
+  ) {
+    super(`Discord ${what}: ${status}`);
+  }
 }

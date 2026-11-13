@@ -1,11 +1,11 @@
 // The Discord calls (REST API v10) with the bot's token. Mentions in the bot's messages never
 // notify anyone (allowed_mentions: none); a rate limit gets one short wait and one retry.
 
-import type { DiscordApi, DiscordChannel, DiscordMessage } from "./types.js";
+import { type DiscordApi, type DiscordChannel, DiscordHttpError, type DiscordMessage } from "./types.js";
 
 const API = "https://discord.com/api/v10";
 
-export function discordRest(botToken: string, applicationId: string): DiscordApi {
+export function discordRest(botToken: string): DiscordApi {
   async function call(method: string, path: string, body?: unknown, auth = true): Promise<Response> {
     const init: RequestInit = {
       method,
@@ -35,7 +35,7 @@ export function discordRest(botToken: string, applicationId: string): DiscordApi
   }
   async function json<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await call(method, path, body);
-    if (!response.ok) throw new Error(`Discord ${method} ${path.split("?")[0]}: ${response.status}`);
+    if (!response.ok) throw new DiscordHttpError(response.status, `${method} ${path.split("?")[0]}`);
     return (await response.json()) as T;
   }
   const quiet = { allowed_mentions: { parse: [] } };
@@ -48,6 +48,24 @@ export function discordRest(botToken: string, applicationId: string): DiscordApi
       return ((await response.json()) as { roles: string[] }).roles;
     },
     guildChannels: (guildId) => json<DiscordChannel[]>("GET", `/guilds/${guildId}/channels`),
+    guildRoles: (guildId) => json<{ id: string; name: string }[]>("GET", `/guilds/${guildId}/roles`),
+    async createRole(guildId, name) {
+      const role = await json<{ id: string }>("POST", `/guilds/${guildId}/roles`, {
+        name,
+        permissions: "0",
+        mentionable: false,
+      });
+      return role.id;
+    },
+    async createChannel(guildId, name, overwrites) {
+      const channel = await json<{ id: string }>("POST", `/guilds/${guildId}/channels`, {
+        name,
+        type: 0,
+        topic: "EDCH: the squadron's BGS reports (written by the bot). Members link EDCH with /bgs link.",
+        permission_overwrites: overwrites,
+      });
+      return channel.id;
+    },
     async channelGuild(channelId) {
       const response = await call("GET", `/channels/${channelId}`);
       if (!response.ok) return null;
@@ -71,14 +89,15 @@ export function discordRest(botToken: string, applicationId: string): DiscordApi
       const response = await call("PUT", `/channels/${channelId}/pins/${messageId}`);
       if (!response.ok) throw new Error(`Discord pin: ${response.status}`);
     },
-    async editInteractionReply(interactionToken, content) {
+    async editInteractionReply(appId, interactionToken, content) {
       // The interaction's own token authorises this call, not the bot's.
-      await call(
+      const response = await call(
         "PATCH",
-        `/webhooks/${applicationId}/${interactionToken}/messages/@original`,
+        `/webhooks/${appId}/${interactionToken}/messages/@original`,
         { content, ...quiet },
         false,
       );
+      if (!response.ok) throw new DiscordHttpError(response.status, "PATCH interaction reply");
     },
   };
 }

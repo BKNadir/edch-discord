@@ -2,6 +2,8 @@
 // with Discord's rules for what the bot can reach (a channel belongs to one server).
 
 // Ids are Discord "snowflakes": they carry their time (here 2026-11-13 19:30 UTC, then later).
+import { DiscordHttpError } from "../dist-test/types.js";
+
 let nextId = (BigInt(Date.parse("2026-11-13T19:30:00Z")) - 1420070400000n) << 22n;
 const newId = () => String(nextId++);
 
@@ -54,8 +56,26 @@ export function fakeDiscord() {
     async pinMessage(channelId, messageId) {
       channels.get(channelId).pins.add(messageId);
     },
-    async editInteractionReply(token, content) {
-      replies.push({ token, content });
+    async editInteractionReply(appId, token, content) {
+      replies.push({ appId, token, content });
+    },
+    async guildRoles(guildId) {
+      return guilds.get(guildId)?.roles ?? [];
+    },
+    async createRole(guildId, name) {
+      const g = guilds.get(guildId);
+      if (g.readOnly) throw new DiscordHttpError(403, "POST roles");
+      const id = newId();
+      g.roles.push({ id, name });
+      return id;
+    },
+    async createChannel(guildId, name, overwrites) {
+      const g = guilds.get(guildId);
+      if (g.readOnly) throw new DiscordHttpError(403, "POST channels");
+      const id = newId();
+      g.channels.push({ id, name, type: 0, overwrites });
+      channels.set(id, { guildId, messages: [], pins: new Set() });
+      return id;
     },
   };
 
@@ -63,11 +83,19 @@ export function fakeDiscord() {
     api,
     replies,
     calls,
-    addGuild(guildId, { channelName = "edch-bgs" } = {}) {
+    addGuild(guildId, { channelName = "edch-bgs", withChannel = true, readOnly = false } = {}) {
       const channelId = newId();
-      guilds.set(guildId, { channels: [{ id: channelId, name: channelName, type: 0 }], members: new Map() });
-      channels.set(channelId, { guildId, messages: [], pins: new Set() });
+      guilds.set(guildId, {
+        channels: withChannel ? [{ id: channelId, name: channelName, type: 0 }] : [],
+        roles: [],
+        members: new Map(),
+        readOnly,
+      });
+      if (withChannel) channels.set(channelId, { guildId, messages: [], pins: new Set() });
       return channelId;
+    },
+    guild(guildId) {
+      return guilds.get(guildId);
     },
     setMember(guildId, userId, roles) {
       guilds.get(guildId).members.set(userId, roles);

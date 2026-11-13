@@ -47,6 +47,7 @@ async function bgs(discord, guildId, userId, roles, name, options = {}, { admin 
   const interaction = {
     type: 2,
     token: `token-${Math.random()}`,
+    application_id: BOT_ID,
     guild_id: guildId,
     member: { user: { id: userId }, roles, permissions: admin ? "32" : "0" },
     data: {
@@ -263,4 +264,40 @@ test("summary: by system, busiest first, within Discord's limit", () => {
   assert.ok(text.length <= 2000);
   assert.match(text, /more systems/);
   assert.match(summaryText("Faction A", "last 24 hours", []), /Nothing reported/);
+});
+
+test("setup: creates the BGS role and the private channel when the server has none", async () => {
+  const discord = fakeDiscord();
+  discord.addGuild(GUILD_A, { withChannel: false });
+  discord.setMember(GUILD_A, ADMIN, []);
+  const answer = await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "Faction A" }, { admin: true });
+  assert.match(answer, /Created the role .* and the private channel/);
+  const guild = discord.guild(GUILD_A);
+  const role = guild.roles.find((r) => r.name === "BGS");
+  const channel = guild.channels.find((c) => c.name === "edch-bgs");
+  assert.ok(role && channel);
+  const everyone = channel.overwrites.find((o) => o.id === GUILD_A);
+  assert.equal(everyone.deny, String(1n << 10n));
+  assert.ok(channel.overwrites.some((o) => o.id === role.id && o.type === 0));
+  assert.ok(channel.overwrites.some((o) => o.id === BOT_ID && o.type === 1));
+  assert.equal((await readConfig(discord.api, channel.id, BOT_ID)).config.roleId, role.id);
+  // Again: nothing new is created, the settings are updated.
+  const again = await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "Faction B" }, { admin: true });
+  assert.doesNotMatch(again, /Created/);
+  assert.equal(guild.roles.length, 1);
+  assert.equal(guild.channels.length, 1);
+  assert.equal((await readConfig(discord.api, channel.id, BOT_ID)).config.faction, "Faction B");
+});
+
+test("setup: without Manage Roles or Manage Channels, says what to do", async () => {
+  const discord = fakeDiscord();
+  discord.addGuild(GUILD_A, { withChannel: false, readOnly: true });
+  const answer = await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "Faction A" }, { admin: true });
+  assert.match(answer, /Manage Roles/);
+});
+
+test("answers: written with the application id Discord sends", async () => {
+  const { discord } = await twoServers();
+  await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link", {}, { extraEnv: { DISCORD_APPLICATION_ID: "" } });
+  assert.equal(discord.replies.at(-1).appId, BOT_ID);
 });
