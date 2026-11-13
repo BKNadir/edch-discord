@@ -13,6 +13,10 @@ It runs as a Cloudflare Worker that answers Discord's interactions: nothing to k
 
 - the settings (faction, role allowed, cancelled keys) in a message the bot pins;
 - each report in messages of the bot (a readable line, the data compressed in a spoiler).
+- for reading: one thread per system where the squadron works, with a line per report
+  ("@member · 3 missions (+7 inf.) · trade 12M"). Discord archives a thread after 3 days without a
+  line (a quiet system); the next report about it reopens it. After each BGS tick, the first
+  report posts the past day's recap in the channel.
 
 A server's data is read only for that server: Discord signs every command with the server it comes
 from, and the key a member gives EDCH is signed by the bot with its server and channel (it can't be
@@ -44,7 +48,7 @@ Removing the role stops a member's reports at once; their past reports still cou
    private **`#edch-bgs`** channel (seen by the role, the bot and the admins) when the server has
    none, and pins its settings there. To use another role: `role:@YourRole`. Without the Manage
    Roles and Manage Channels rights, create the channel yourself (private, the bot can see it, read
-   its history, send, manage and pin messages) and give `role`.
+   its history, send, manage and pin messages, create threads and write in them) and give `role`.
 3. Give the role to the members who report.
 4. Each member: `/bgs link`, then in EDCH, Sync → Connect to the Discord bot, paste the key and tick "Send BGS
    reports".
@@ -56,6 +60,10 @@ You need a Discord account and a Cloudflare account (the free plan is enough).
 1. **Discord**: [developer portal](https://discord.com/developers/applications) → New Application
    "EDCH". Note the **Application ID** and the **Public Key** (General Information). Bot →
    Reset Token: note the **token** (keep it secret).
+   Installation → Default Install Settings → Guild Install: scopes `bot` and
+   `applications.commands`; permissions Manage Roles, Manage Channels, View Channels, Send
+   Messages, Manage Messages, Pin Messages, Read Message History, Create Public Threads, Send
+   Messages in Threads. Bot: no privileged intent is needed.
 2. **Cloudflare**: `npm install`, then `npx wrangler login`.
 3. In `wrangler.toml`: `DISCORD_APPLICATION_ID`, and for your own copy `DISCORD_GUILD_ID` (your
    server's id: the bot then refuses every other server).

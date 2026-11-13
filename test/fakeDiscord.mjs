@@ -44,6 +44,7 @@ export function fakeDiscord() {
       const c = channels.get(channelId);
       if (!c) throw new Error("unknown channel");
       if (content.length > 2000) throw new Error("message too long");
+      c.archived = false;
       const message = { id: newId(), content, author: { id: BOT_ID }, timestamp: new Date().toISOString() };
       c.messages.push(message);
       return message;
@@ -67,6 +68,30 @@ export function fakeDiscord() {
       if (g.readOnly) throw new DiscordHttpError(403, "POST roles");
       const id = newId();
       g.roles.push({ id, name });
+      return id;
+    },
+    async activeThreads(guildId) {
+      return [...channels.entries()]
+        .filter(([, c]) => c.guildId === guildId && c.parent && !c.archived)
+        .map(([id, c]) => ({ id, name: c.name, parentId: c.parent }));
+    },
+    async archivedThreads(channelId) {
+      return [...channels.entries()]
+        .filter(([, c]) => c.parent === channelId && c.archived)
+        .map(([id, c]) => ({ id, name: c.name }));
+    },
+    async createThread(channelId, name, autoArchiveMinutes) {
+      const parent = channels.get(channelId);
+      if (!parent) throw new Error("unknown channel");
+      const id = newId();
+      channels.set(id, {
+        guildId: parent.guildId,
+        parent: channelId,
+        name,
+        autoArchiveMinutes,
+        messages: [],
+        pins: new Set(),
+      });
       return id;
     },
     async createChannel(guildId, name, overwrites) {
@@ -105,6 +130,15 @@ export function fakeDiscord() {
     },
     messages(channelId) {
       return channels.get(channelId).messages;
+    },
+    /** The threads of a channel: name → { id, messages, archived }. */
+    threads(channelId) {
+      return Object.fromEntries(
+        [...channels.entries()].filter(([, c]) => c.parent === channelId).map(([id, c]) => [c.name, { id, ...c }]),
+      );
+    },
+    archive(threadId) {
+      channels.get(threadId).archived = true;
     },
     /** A message someone else wrote (not the bot). */
     postAs(channelId, userId, content) {

@@ -38,6 +38,8 @@ const MANAGE_MESSAGES = 1n << 13n;
 const READ_MESSAGE_HISTORY = 1n << 16n;
 const USE_APPLICATION_COMMANDS = 1n << 31n;
 const PIN_MESSAGES = 1n << 51n;
+const CREATE_PUBLIC_THREADS = 1n << 35n;
+const SEND_MESSAGES_IN_THREADS = 1n << 38n;
 
 /**
  * Who sees #edch-bgs: not @everyone; the role's members read it (and run /bgs there); the bot
@@ -50,7 +52,15 @@ export function channelOverwrites(guildId: string, roleId: string, botId: string
     {
       id: botId,
       type: 1,
-      allow: String(VIEW_CHANNEL | SEND_MESSAGES | MANAGE_MESSAGES | READ_MESSAGE_HISTORY | PIN_MESSAGES),
+      allow: String(
+        VIEW_CHANNEL |
+          SEND_MESSAGES |
+          MANAGE_MESSAGES |
+          READ_MESSAGE_HISTORY |
+          PIN_MESSAGES |
+          CREATE_PUBLIC_THREADS |
+          SEND_MESSAGES_IN_THREADS,
+      ),
       deny: "0",
     },
   ];
@@ -94,7 +104,8 @@ export async function readConfig(
       const revoked: Record<string, number> = {};
       for (const [user, time] of Object.entries(raw.revoked ?? {}))
         if (/^\d{17,20}$/.test(user) && Number.isInteger(time)) revoked[user] = time as number;
-      return { config: { faction: raw.faction, roleId: raw.role, revoked }, messageId: message.id };
+      const recapTick = typeof raw.recap === "string" && Number.isFinite(Date.parse(raw.recap)) ? raw.recap : undefined;
+      return { config: { faction: raw.faction, roleId: raw.role, revoked, recapTick }, messageId: message.id };
     } catch {
       continue;
     }
@@ -110,6 +121,7 @@ export function configMessage(config: GuildConfig): string {
     faction: config.faction,
     role: config.roleId,
     revoked: config.revoked,
+    recap: config.recapTick,
   });
   return `**EDCH settings** (written by the bot: change them with /bgs setup)\nFaction: **${config.faction}** · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
 }

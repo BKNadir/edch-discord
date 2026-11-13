@@ -79,7 +79,8 @@ if (!response.ok) {
 console.log("/bgs is declared.");
 
 // What the bot needs: create the BGS role and the #edch-bgs channel (/bgs setup), then in that
-// channel see it, read its history, send messages, pin (the settings).
+// channel see it, read its history, send messages, pin (the settings), and write in one thread per
+// system.
 const VIEW_CHANNEL = 1n << 10n;
 const SEND_MESSAGES = 1n << 11n;
 const MANAGE_MESSAGES = 1n << 13n;
@@ -87,8 +88,18 @@ const READ_MESSAGE_HISTORY = 1n << 16n;
 const PIN_MESSAGES = 1n << 51n;
 const MANAGE_CHANNELS = 1n << 4n;
 const MANAGE_ROLES = 1n << 28n;
+const CREATE_PUBLIC_THREADS = 1n << 35n;
+const SEND_MESSAGES_IN_THREADS = 1n << 38n;
 const permissions =
-  MANAGE_CHANNELS | MANAGE_ROLES | VIEW_CHANNEL | SEND_MESSAGES | MANAGE_MESSAGES | READ_MESSAGE_HISTORY | PIN_MESSAGES;
+  MANAGE_CHANNELS |
+  MANAGE_ROLES |
+  VIEW_CHANNEL |
+  SEND_MESSAGES |
+  MANAGE_MESSAGES |
+  READ_MESSAGE_HISTORY |
+  PIN_MESSAGES |
+  CREATE_PUBLIC_THREADS |
+  SEND_MESSAGES_IN_THREADS;
 console.log(
   `Add the bot to a server (needs Manage Server there):\nhttps://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot%20applications.commands&permissions=${permissions}`,
 );

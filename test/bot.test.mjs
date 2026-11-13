@@ -301,3 +301,52 @@ test("answers: written with the application id Discord sends", async () => {
   await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link", {}, { extraEnv: { DISCORD_APPLICATION_ID: "" } });
   assert.equal(discord.replies.at(-1).appId, BOT_ID);
 });
+
+test("threads: one per system, a line per report, reopened after being archived", async () => {
+  const { discord, channelA } = await twoServers();
+  const key = keyFrom(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link"));
+  const send = (actions) =>
+    handleApi("POST", "/v1/report", `Bearer ${key}`, JSON.stringify(report("Faction A", actions)), env(), discord.api);
+  await send([
+    ACTION,
+    { ...ACTION, kind: "trade", influence: undefined, credits: 12_000_000 },
+    { ...ACTION, system: "HIP 21991" },
+  ]);
+  let threads = discord.threads(channelA);
+  assert.deepEqual(Object.keys(threads).sort(), ["HIP 21991", "Synuefe XR-H d11-102"]);
+  const line = threads["Synuefe XR-H d11-102"].messages[0].content;
+  assert.match(line, new RegExp(`<@${PILOT}> · 1 mission \\(\\+3 inf\\.\\) · trade 12\\.0M`));
+  assert.equal(threads["HIP 21991"].autoArchiveMinutes, 4320);
+  // Archived (3 days quiet), then a new report: the same thread, open again.
+  discord.archive(threads["HIP 21991"].id);
+  await send([{ ...ACTION, system: "HIP 21991", at: "2026-11-13T19:30:00Z" }]);
+  threads = discord.threads(channelA);
+  assert.equal(Object.keys(threads).length, 2);
+  assert.equal(threads["HIP 21991"].messages.length, 2);
+  assert.equal(threads["HIP 21991"].archived, false);
+});
+
+test("daily recap: once per tick, in the channel, for the past BGS day", async () => {
+  const { discord, channelA } = await twoServers();
+  const key = keyFrom(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "link"));
+  const send = (actions, tick) =>
+    handleApi(
+      "POST",
+      "/v1/report",
+      `Bearer ${key}`,
+      JSON.stringify(report("Faction A", actions)),
+      env(),
+      discord.api,
+      async () => tick,
+    );
+  const recaps = () => discord.messages(channelA).filter((m) => m.content.startsWith("📊"));
+  // First report: the tick is only noted.
+  await send([{ ...ACTION, at: "2026-11-13T19:00:00Z" }], "2026-11-12T15:00:00.000Z");
+  assert.equal(recaps().length, 0);
+  // A new tick: the recap of the day before it, once.
+  await send([{ ...ACTION, at: "2026-11-13T19:40:00Z", system: "Late" }], "2026-11-13T19:30:00.000Z");
+  await send([{ ...ACTION, at: "2026-11-13T19:45:00Z", system: "Later" }], "2026-11-13T19:30:00.000Z");
+  assert.equal(recaps().length, 1);
+  assert.match(recaps()[0].content, /Synuefe XR-H d11-102/);
+  assert.doesNotMatch(recaps()[0].content, /Late/);
+});

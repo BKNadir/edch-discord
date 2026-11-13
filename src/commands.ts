@@ -155,7 +155,12 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
           throw error;
         }
         const found = await readConfig(ctx.api, channelId, botId);
-        const config: GuildConfig = { faction, roleId, revoked: found?.config.revoked ?? {} };
+        const config: GuildConfig = {
+          faction,
+          roleId,
+          revoked: found?.config.revoked ?? {},
+          recapTick: found?.config.recapTick,
+        };
         await writeConfig(ctx.api, channelId, config, found?.messageId);
         return [
           made.length ? `Created ${made.join(" and ")}.` : "",

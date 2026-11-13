@@ -21,6 +21,8 @@ export interface GuildConfig {
   roleId: string;
   /** Keys cancelled by /bgs revoke: member → keys issued before this time (Unix seconds) refused. */
   revoked: Record<string, number>;
+  /** The tick of the last daily recap (ISO), so each BGS day gets one (threads.ts). */
+  recapTick?: string;
 }
 
 /** What EDCH counts (docs/BGS_SYNC.md in EDCH). */
@@ -89,6 +91,12 @@ export interface DiscordApi {
   createRole(guildId: string, name: string): Promise<string>;
   /** Creates a text channel with these permission overwrites (needs Manage Channels). */
   createChannel(guildId: string, name: string, overwrites: PermissionOverwrite[]): Promise<string>;
+  /** The server's active threads, with the channel each belongs to. */
+  activeThreads(guildId: string): Promise<{ id: string; name: string; parentId: string }[]>;
+  /** The channel's archived public threads (the most recent ones). */
+  archivedThreads(channelId: string): Promise<{ id: string; name: string }[]>;
+  /** Creates a public thread in the channel, archived by Discord after that long without messages. */
+  createThread(channelId: string, name: string, autoArchiveMinutes: number): Promise<string>;
   /** The channel's server (to check that a channel belongs to the server a key names). */
   channelGuild(channelId: string): Promise<string | null>;
   pinnedMessages(channelId: string): Promise<DiscordMessage[]>;

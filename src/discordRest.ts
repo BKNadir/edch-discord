@@ -57,6 +57,29 @@ export function discordRest(botToken: string): DiscordApi {
       });
       return role.id;
     },
+    async activeThreads(guildId) {
+      const answer = await json<{ threads: { id: string; name: string; parent_id: string }[] }>(
+        "GET",
+        `/guilds/${guildId}/threads/active`,
+      );
+      return answer.threads.map((t) => ({ id: t.id, name: t.name, parentId: t.parent_id }));
+    },
+    async archivedThreads(channelId) {
+      const answer = await json<{ threads: { id: string; name: string }[] }>(
+        "GET",
+        `/channels/${channelId}/threads/archived/public?limit=100`,
+      );
+      return answer.threads.map((t) => ({ id: t.id, name: t.name }));
+    },
+    async createThread(channelId, name, autoArchiveMinutes) {
+      // 11 = public thread (in a private channel, only those who see the channel see it).
+      const thread = await json<{ id: string }>("POST", `/channels/${channelId}/threads`, {
+        name,
+        type: 11,
+        auto_archive_duration: autoArchiveMinutes,
+      });
+      return thread.id;
+    },
     async createChannel(guildId, name, overwrites) {
       const channel = await json<{ id: string }>("POST", `/guilds/${guildId}/channels`, {
         name,

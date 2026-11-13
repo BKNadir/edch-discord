@@ -61,6 +61,7 @@ export default {
           body,
           env,
           api,
+          lastTick,
         );
         return json(answer.status, answer.body);
       } catch {
