@@ -14,7 +14,8 @@ It runs as a Cloudflare Worker that answers Discord's interactions: nothing to k
 - **`#edch-sync`** (admins and the bot only): the settings (factions followed, role, channels, cancelled
   keys) in a message the bot pins, and each report in messages of the bot, the data compressed in
   a spoiler.
-- **`#edch-bgs`** (the `BGS` role, admins and the bot), for reading: one thread per system
+- **`#edch-bgs`** (the `BGS` role, admins and the bot), read-only (only the bot writes; set up
+  again to apply it to an older channel): one thread per system
   where the squadron works or a followed faction is, with a line per report ("@member · 3 missions
   (+7 inf.) · trade 12M") and a line when a member's visit shows the influence or states changed
   ("🛰️ @member · Faction 34.2 % (Boom) · closest Rival 30.1 %").

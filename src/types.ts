@@ -107,6 +107,8 @@ export interface DiscordApi {
   createRole(guildId: string, name: string): Promise<string>;
   /** Creates a text channel with these permission overwrites (needs Manage Channels). */
   createChannel(guildId: string, name: string, overwrites: PermissionOverwrite[]): Promise<string>;
+  /** Sets one permission overwrite of a channel (a role or member), leaving the others alone. */
+  setChannelPermission(channelId: string, overwrite: PermissionOverwrite): Promise<void>;
   /** The server's active threads, with the channel each belongs to. */
   activeThreads(guildId: string): Promise<{ id: string; name: string; parentId: string }[]>;
   /** The channel's archived public threads (the most recent ones). */

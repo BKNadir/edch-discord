@@ -101,6 +101,14 @@ export function discordRest(botToken: string): DiscordApi {
       });
       return channel.id;
     },
+    async setChannelPermission(channelId, overwrite) {
+      const response = await call("PUT", `/channels/${channelId}/permissions/${overwrite.id}`, {
+        type: overwrite.type,
+        allow: overwrite.allow,
+        deny: overwrite.deny,
+      });
+      if (!response.ok) throw new DiscordHttpError(response.status, "PUT channel permission");
+    },
     async channelGuild(channelId) {
       const response = await call("GET", `/channels/${channelId}`);
       if (!response.ok) return null;

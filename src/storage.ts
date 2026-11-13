@@ -47,6 +47,12 @@ const USE_APPLICATION_COMMANDS = 1n << 31n;
 const PIN_MESSAGES = 1n << 51n;
 const CREATE_PUBLIC_THREADS = 1n << 35n;
 const SEND_MESSAGES_IN_THREADS = 1n << 38n;
+/**
+ * What the role can't do in #edch-bgs: it's read-only, only the bot writes there. (Discord lets a
+ * bot deny only the permissions it has itself, so private threads aren't in it: nobody could
+ * write in one anyway.)
+ */
+const WRITE = SEND_MESSAGES | SEND_MESSAGES_IN_THREADS | CREATE_PUBLIC_THREADS;
 
 const hidden = (guildId: string): PermissionOverwrite => ({
   id: guildId,
@@ -68,11 +74,19 @@ export function syncOverwrites(guildId: string, botId: string): PermissionOverwr
   ];
 }
 
-/** #edch-bgs: hidden from @everyone; the role reads it; the bot writes the threads and the recap. */
+/**
+ * #edch-bgs: hidden from @everyone; the role reads it (read-only: no messages, no threads, the
+ * /bgs commands still work); the bot writes the threads and the recap.
+ */
 export function bgsOverwrites(guildId: string, roleId: string, botId: string): PermissionOverwrite[] {
   return [
     hidden(guildId),
-    { id: roleId, type: 0, allow: String(VIEW_CHANNEL | READ_MESSAGE_HISTORY | USE_APPLICATION_COMMANDS), deny: "0" },
+    {
+      id: roleId,
+      type: 0,
+      allow: String(VIEW_CHANNEL | READ_MESSAGE_HISTORY | USE_APPLICATION_COMMANDS),
+      deny: String(WRITE),
+    },
     {
       id: botId,
       type: 1,
@@ -100,7 +114,11 @@ export async function ensureChannel(
   overwrites: PermissionOverwrite[],
 ): Promise<{ id: string; created: boolean }> {
   const existing = await findChannel(api, guildId, name);
-  if (existing) return { id: existing, created: false };
+  if (existing) {
+    // Set up again: the bot's own permissions are applied again (only those, others are kept).
+    for (const overwrite of overwrites) await api.setChannelPermission(existing, overwrite);
+    return { id: existing, created: false };
+  }
   return { id: await api.createChannel(guildId, name, overwrites), created: true };
 }
 

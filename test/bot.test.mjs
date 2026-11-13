@@ -667,3 +667,29 @@ test("systems seen: server B never gets A's systems", async () => {
   const forB = await handleApi("GET", "/v1/systems", `Bearer ${keyB}`, null, env(), discord.api, undefined, now);
   assert.deepEqual(forB.body.systems, []);
 });
+
+test("#edch-bgs is read-only for the role, also after setting up again; the key tells to mute it", async () => {
+  const discord = fakeDiscord();
+  discord.addGuild(GUILD_A, { withChannel: false });
+  discord.setMember(GUILD_A, PILOT, []);
+  await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "Faction A" }, { admin: true });
+  const guild = discord.guild(GUILD_A);
+  const role = guild.roles[0];
+  const reading = () => guild.channels.find((c) => c.name === "edch-bgs");
+  const write = (1n << 11n) | (1n << 38n) | (1n << 35n);
+  const roleRule = () => reading().overwrites.find((o) => o.id === role.id);
+  assert.equal(BigInt(roleRule().deny) & write, write);
+  assert.ok(BigInt(roleRule().allow) & (1n << 10n));
+  // An older channel where the role could write: setting up again closes it, other rules stay.
+  reading().overwrites = [
+    ...reading().overwrites.filter((o) => o.id !== role.id),
+    { id: role.id, type: 0, allow: String(1n << 10n), deny: "0" },
+    { id: "1999999999999999999", type: 0, allow: "0", deny: "0" },
+  ];
+  await bgs(discord, GUILD_A, ADMIN, [], "setup", {}, { admin: true });
+  assert.equal(BigInt(roleRule().deny) & write, write);
+  assert.ok(reading().overwrites.some((o) => o.id === "1999999999999999999"));
+  discord.setMember(GUILD_A, PILOT, [role.id]);
+  await bgs(discord, GUILD_A, PILOT, [role.id], "link", {});
+  assert.match(discord.dms.at(-1).content, new RegExp(`Mute <#${reading().id}>`));
+});

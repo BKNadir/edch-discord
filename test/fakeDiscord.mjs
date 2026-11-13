@@ -104,6 +104,14 @@ export function fakeDiscord() {
       });
       return id;
     },
+    async setChannelPermission(channelId, overwrite) {
+      for (const g of guilds.values()) {
+        const channel = g.channels.find((c) => c.id === channelId);
+        if (!channel) continue;
+        if (g.readOnly) throw new DiscordHttpError(403, "PUT permission");
+        channel.overwrites = [...(channel.overwrites ?? []).filter((o) => o.id !== overwrite.id), overwrite];
+      }
+    },
     async createChannel(guildId, name, overwrites) {
       const g = guilds.get(guildId);
       if (g.readOnly) throw new DiscordHttpError(403, "POST channels");

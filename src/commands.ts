@@ -364,7 +364,7 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
           if (sync.created) made.push(`<#${syncId}> (data, admins only)`);
           const bgs = await ensureChannel(ctx.api, guildId, BGS_CHANNEL, bgsOverwrites(guildId, roleId, botId));
           bgsId = bgs.id;
-          if (bgs.created) made.push(`<#${bgsId}> (for the role)`);
+          if (bgs.created) made.push(`<#${bgsId}> (for the role, read-only)`);
         } catch (error) {
           if (error instanceof DiscordHttpError && error.status === 403) return MISSING_PERMISSIONS;
           throw error;
@@ -417,7 +417,12 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
           key,
           "```",
           'In EDCH: Sync → Connect to the Discord bot → paste the key and tick "Send BGS reports". Keep it to yourself: it reports in your name. `/bgs unlink` cancels it.',
-        ].join("\n");
+          loaded.config.bgsChannelId
+            ? `🔕 Mute <#${loaded.config.bgsChannelId}> on this server (right-click → Mute Channel → Until I turn it back on): the bot writes there each time a member reports, so you'd keep getting unread marks, on every server where you linked EDCH.`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
         // By direct message, so it stays with the member; only they see this answer anyway.
         if (await ctx.api.sendDirectMessage(userId, text)) return "Your EDCH key is in your direct messages.";
         return `${text}\n(Your direct messages are closed to this server, so the key is here: only you can see it.)`;
