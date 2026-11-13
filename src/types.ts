@@ -15,8 +15,11 @@ export interface Env {
 
 /** A server's settings, kept in a pinned message of its #edch-sync channel. */
 export interface GuildConfig {
-  /** The minor faction the squadron follows. */
-  faction: string;
+  /**
+   * The minor factions the server follows, the default (the squadron's own) first; allies can be
+   * added with /bgs faction add. Empty until one is added.
+   */
+  factions: string[];
   /** The role a member needs to link EDCH and to report. */
   roleId: string;
   /** The channel people read (threads by system, daily recap); the data channel when missing. */
@@ -53,9 +56,18 @@ export interface ReportAction {
   against: boolean;
 }
 
-/** An action read back from the channel, with who reported it. */
+/** An action read back from the channel, with who reported it and for which faction. */
 export interface StoredAction extends ReportAction {
   userId: string;
+  /** Missing in reports written before several factions could be followed: the default one. */
+  faction?: string;
+}
+
+/** A message the bot writes: text, Discord embeds (cards) and components (menus, buttons). */
+export interface MessagePayload {
+  content?: string;
+  embeds?: Record<string, unknown>[];
+  components?: Record<string, unknown>[];
 }
 
 /** A Discord message, as far as the bot needs it. */
@@ -106,13 +118,17 @@ export interface DiscordApi {
   pinnedMessages(channelId: string): Promise<DiscordMessage[]>;
   /** Messages after `afterId` (oldest first), at most 100. */
   messagesAfter(channelId: string, afterId: string): Promise<DiscordMessage[]>;
-  sendMessage(channelId: string, content: string): Promise<DiscordMessage>;
+  sendMessage(channelId: string, message: string | MessagePayload): Promise<DiscordMessage>;
   editMessage(channelId: string, messageId: string, content: string): Promise<void>;
   pinMessage(channelId: string, messageId: string): Promise<void>;
   /** Sends a direct message; false when the member doesn't accept them from the server's members. */
   sendDirectMessage(userId: string, content: string): Promise<boolean>;
   /** Replaces the answer to an interaction that was deferred (its token is valid 15 minutes). */
-  editInteractionReply(applicationId: string, interactionToken: string, content: string): Promise<void>;
+  editInteractionReply(
+    applicationId: string,
+    interactionToken: string,
+    message: string | MessagePayload,
+  ): Promise<void>;
 }
 
 /** Discord refused a call; `status` 403 means the bot lacks a permission. */

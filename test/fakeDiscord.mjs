@@ -42,13 +42,15 @@ export function fakeDiscord() {
       const c = channels.get(channelId);
       return c ? c.messages.filter((m) => BigInt(m.id) > BigInt(afterId)).slice(0, 100) : [];
     },
-    async sendMessage(channelId, content) {
+    async sendMessage(channelId, sent) {
       calls.push(["send", channelId]);
       const c = channels.get(channelId);
       if (!c) throw new Error("unknown channel");
+      const { content = "", embeds = [] } = typeof sent === "string" ? { content: sent } : sent;
       if (content.length > 2000) throw new Error("message too long");
+      if (embeds.length > 10 || JSON.stringify(embeds).length > 8000) throw new Error("embeds too large");
       c.archived = false;
-      const message = { id: newId(), content, author: { id: BOT_ID }, timestamp: new Date().toISOString() };
+      const message = { id: newId(), content, embeds, author: { id: BOT_ID }, timestamp: new Date().toISOString() };
       c.messages.push(message);
       return message;
     },

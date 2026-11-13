@@ -1,7 +1,7 @@
 # EDCH-Discord
 
 The code of **EDCH**, the Discord bot of the [EDCH](https://github.com/BKNadir/edch) app (Elite Dangerous Companion Helper): a
-squadron's members send what they did for their minor faction (missions and their influence,
+squadron's members send what they did for their minor factions (their own and allied ones; missions and their influence,
 bounties, combat bonds, trade, cartography, and what counted against it), and `/bgs summary` shows
 the squadron's work system by system.
 
@@ -11,7 +11,7 @@ It runs as a Cloudflare Worker that answers Discord's interactions: nothing to k
 
 **The bot keeps nothing.** Each server's data lives in that server's own channels:
 
-- **`#edch-sync`** (admins and the bot only): the settings (faction, role, channels, cancelled
+- **`#edch-sync`** (admins and the bot only): the settings (factions followed, role, channels, cancelled
   keys) in a message the bot pins, and each report in messages of the bot, the data compressed in
   a spoiler.
 - **`#edch-bgs`** (the `BGS` role, admins and the bot), for reading: one thread per system
@@ -34,15 +34,27 @@ doesn't want to depend on anyone can run its own copy (below).
 
 Commands leave nothing in the channel: every answer is seen by the member only.
 
-| Command                                    | Who                           | What                                                                                                                                                 |
-| ------------------------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/bgs setup faction [role] [link_channel]` | admins (Manage Server)        | the faction followed; creates the `BGS` role, `#edch-sync` and `#edch-bgs` if missing; `link_channel`: the only channel where `/bgs link` works |
-| `/bgs revoke member`                       | admins                        | cancels a member's keys                                                                                                                              |
-| `/bgs link`                                | members with the role         | their EDCH key, by direct message (in the answer, seen by them only, when their DMs are closed)                                                      |
-| `/bgs unlink`                              | anyone                        | cancels their own keys                                                                                                                               |
-| `/bgs summary [period]`                    | members with the role, admins | the squadron's work since the tick, 24 hours or 7 days                                                                                               |
+| Command                                      | Who                           | What                                                                                                                                                          |
+| -------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/bgs setup [faction] [role] [link_channel]` | admins (Manage Server)        | creates the `BGS` role, `#edch-sync` and `#edch-bgs` if missing; `faction`: added to those followed; `link_channel`: the only channel where `/bgs link` works |
+| `/bgs faction add name`                      | admins                        | follows one more faction (up to 10: yours and allies on the same server); the game's factions are offered as you type                                         |
+| `/bgs faction remove name`                   | admins                        | stops following a faction (what was reported for it stays)                                                                                                    |
+| `/bgs faction default name`                  | admins                        | the faction shown first                                                                                                                                       |
+| `/bgs faction list`                          | members with the role, admins | the factions followed, as a card; admins also get menus there to change the default or remove one                                                             |
+| `/bgs revoke member`                         | admins                        | cancels a member's keys                                                                                                                                       |
+| `/bgs link`                                  | members with the role         | their EDCH key, by direct message (in the answer, seen by them only, when their DMs are closed)                                                               |
+| `/bgs unlink`                                | anyone                        | cancels their own keys                                                                                                                                        |
+| `/bgs summary [period] [faction]`            | members with the role, admins | the squadron's work since the tick, 24 hours or 7 days: one card per faction, or the one chosen                                                               |
 
-`setup` and `revoke` are listed to everyone (Discord shows every subcommand) but the bot refuses
+EDCH asks the bot which factions the server follows and sends a report for each one its commander
+worked for. With several factions, the thread lines name the faction.
+
+While an admin types a faction to add, the bot asks [EliteBGS](https://elitebgs.app) for the
+game's factions starting with it (only the typed text is sent, nothing about the server or the
+member); if EliteBGS doesn't answer in time, only the typed text is offered. The factions already
+followed are offered in `remove`, `default` and `summary`.
+
+`setup`, `revoke` and `faction add|remove|default` are listed to everyone (Discord shows every subcommand) but the bot refuses
 them to anyone without the Administrator or Manage Server right. Removing the role stops a member's reports at once; their past
 reports still count.
 
@@ -50,8 +62,9 @@ reports still count.
 
 1. An admin adds the bot with the link given in EDCH (Sync → Connect to the Discord bot) or by its
    host.
-2. `/bgs setup faction:"Your faction"`: the bot creates the **`BGS`** role,
-   **`#edch-sync`** and **`#edch-bgs`** when they're missing, and pins its settings. Options:
+2. `/bgs setup`: the bot creates the **`BGS`** role, **`#edch-sync`** and **`#edch-bgs`** when
+   they're missing, and pins its settings. Then `/bgs faction add` for your faction, and again for
+   allied ones (or `faction:"Your faction"` in `setup`). Options:
    `role:@YourRole` for another role, `link_channel:#channel` to allow `/bgs link` there only.
    Without the Manage Roles and Manage Channels rights, create them yourself (private; in
    `#edch-sync` the bot sees, reads the history, sends, manages and pins; in `#edch-bgs` it also

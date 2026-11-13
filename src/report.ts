@@ -1,6 +1,6 @@
 // Reading a report sent by EDCH ("edch.bgs.report" version 1, docs/BGS_SYNC.md in EDCH):
 // everything is checked and bounded before it is written to the channel; a report for another
-// faction than the server's, or in an unknown format, is refused as a whole.
+// faction than those the server follows, or in an unknown format, is refused as a whole.
 
 import { ACTION_KINDS, type ActionKind, type ReportAction } from "./types.js";
 
@@ -25,15 +25,20 @@ const whole = (value: unknown, min: number, max: number) =>
 /** Elite Dangerous faction names compare without case. */
 export const sameFaction = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-/** Checks a report against the server's faction: its actions, or why it's refused. */
-export function checkReport(raw: unknown, faction: string): { actions: ReportAction[] } | { error: ReportError } {
+/** Checks a report against the server's factions: its faction and actions, or why it's refused. */
+export function checkReport(
+  raw: unknown,
+  factions: string[],
+): { faction: string; actions: ReportAction[] } | { error: ReportError } {
   if (!raw || typeof raw !== "object") return { error: "badFormat" };
   const report = raw as Record<string, unknown>;
   if (report.schema !== REPORT_SCHEMA) return { error: "badFormat" };
   if (report.version !== REPORT_VERSION) return { error: "unknownVersion" };
   const reportFaction = text(report.faction, 120);
   if (!reportFaction) return { error: "badFormat" };
-  if (!sameFaction(reportFaction, faction)) return { error: "otherFaction" };
+  // The server's own spelling of the faction is kept.
+  const faction = factions.find((f) => sameFaction(f, reportFaction));
+  if (!faction) return { error: "otherFaction" };
   if (!Array.isArray(report.actions)) return { error: "badFormat" };
   if (report.actions.length > MAX_ACTIONS) return { error: "tooLarge" };
   const actions: ReportAction[] = [];
@@ -56,5 +61,5 @@ export function checkReport(raw: unknown, faction: string): { actions: ReportAct
       against: entry.against,
     });
   }
-  return { actions };
+  return { faction, actions };
 }

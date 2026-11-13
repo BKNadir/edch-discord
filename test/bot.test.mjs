@@ -61,7 +61,7 @@ async function bgs(
     member: { user: { id: userId }, roles, permissions: admin ? "32" : "0" },
     data: {
       name: command ?? "bgs",
-      options: [{ name, options: Object.entries(options).map(([n, value]) => ({ name: n, value })) }],
+      options: [commandOptions(name, options)],
     },
   };
   const answer = await handleInteraction(interaction, {
@@ -73,9 +73,20 @@ async function bgs(
   });
   if (answer.later) {
     await answer.later();
-    return discord.replies.find((r) => r.token === interaction.token).content;
+    const content = discord.replies.find((r) => r.token === interaction.token).content;
+    // A text, or a card (embeds, menus) as Discord gets it.
+    return content;
   }
   return answer.response.data?.content;
+}
+
+/** "faction add" → a subcommand group (type 2) holding the subcommand; "link" → a subcommand. */
+function commandOptions(name, options) {
+  const values = Object.entries(options).map(([n, value]) => ({ name: n, value }));
+  const [group, sub] = name.split(" ");
+  return sub
+    ? { type: 2, name: group, options: [{ type: 1, name: sub, options: values }] }
+    : { type: 1, name, options: values };
 }
 
 /** Two servers, each set up with its own faction and role, PILOT a member of A only. */
@@ -137,15 +148,15 @@ test("discord signatures: only Discord's signed interactions are read", async ()
 });
 
 test("reports: checked against the server's faction, bounded, malformed refused", () => {
-  assert.deepEqual(checkReport(report("faction a", [ACTION]), "Faction A").actions[0].influence, 3);
-  assert.equal(checkReport(report("Faction B", [ACTION]), "Faction A").error, "otherFaction");
-  assert.equal(checkReport({ ...report("Faction A", []), version: 2 }, "Faction A").error, "unknownVersion");
-  assert.equal(checkReport(report("Faction A", [{ ...ACTION, kind: "hack" }]), "Faction A").error, "badFormat");
-  assert.equal(checkReport(report("Faction A", [{ ...ACTION, at: "soon" }]), "Faction A").error, "badFormat");
-  assert.equal(checkReport(report("Faction A", Array(2001).fill(ACTION)), "Faction A").error, "tooLarge");
+  assert.deepEqual(checkReport(report("faction a", [ACTION]), ["Faction A"]).actions[0].influence, 3);
+  assert.equal(checkReport(report("Faction B", [ACTION]), ["Faction A"]).error, "otherFaction");
+  assert.equal(checkReport({ ...report("Faction A", []), version: 2 }, ["Faction A"]).error, "unknownVersion");
+  assert.equal(checkReport(report("Faction A", [{ ...ACTION, kind: "hack" }]), ["Faction A"]).error, "badFormat");
+  assert.equal(checkReport(report("Faction A", [{ ...ACTION, at: "soon" }]), ["Faction A"]).error, "badFormat");
+  assert.equal(checkReport(report("Faction A", Array(2001).fill(ACTION)), ["Faction A"]).error, "tooLarge");
   // Out-of-range numbers are dropped, not stored.
   assert.equal(
-    checkReport(report("Faction A", [{ ...ACTION, influence: 99 }]), "Faction A").actions[0].influence,
+    checkReport(report("Faction A", [{ ...ACTION, influence: 99 }]), ["Faction A"]).actions[0].influence,
     undefined,
   );
 });
@@ -156,24 +167,24 @@ test("storage: a big report split into messages under Discord's limit, read back
     at: new Date(Date.parse(ACTION.at) + i * 1000).toISOString(),
     system: `System ${i % 37}`,
   }));
-  const messages = await reportMessages(PILOT, actions);
+  const messages = await reportMessages(PILOT, "Faction A", actions);
   assert.ok(messages.length > 1);
   assert.ok(messages.every((m) => m.length <= 2000));
   const back = (await Promise.all(messages.map(messageActions))).flat();
   assert.equal(back.length, 400);
-  assert.deepEqual({ ...back[5], userId: undefined }, { ...actions[5], userId: undefined });
+  assert.deepEqual({ ...back[5], userId: undefined }, { ...actions[5], userId: undefined, faction: "Faction A" });
   assert.deepEqual(await messageActions("hello"), []);
 });
 
 test("commands: setup for admins, link needs the role, the key works for EDCH", async () => {
   const { discord, channelA } = await twoServers();
   assert.match(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "setup", { role: ROLE_A, faction: "X" }), /Only admins/);
-  assert.equal((await readConfig(discord.api, channelA, BOT_ID)).config.faction, "Faction A");
+  assert.equal((await readConfig(discord.api, channelA, BOT_ID)).config.factions[0], "Faction A");
   assert.match(await bgs(discord, GUILD_A, OUTSIDER, [], "link"), /You need the/);
   const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
   assert.ok(key);
   const config = await handleApi("GET", "/v1/config", `Bearer ${key}`, null, env(), discord.api);
-  assert.deepEqual(config, { status: 200, body: { faction: "Faction A" } });
+  assert.deepEqual(config, { status: 200, body: { faction: "Faction A", factions: ["Faction A"] } });
   const sent = await handleApi(
     "POST",
     "/v1/report",
@@ -183,7 +194,7 @@ test("commands: setup for admins, link needs the role, the key works for EDCH", 
     discord.api,
   );
   assert.deepEqual(sent.body, { accepted: 1 });
-  const summary = await bgs(discord, GUILD_A, PILOT, [ROLE_A], "summary", { period: "7d" });
+  const summary = JSON.stringify(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "summary", { period: "7d" }));
   assert.match(summary, /Synuefe XR-H d11-102/);
   assert.match(summary, /\+3 inf/);
 });
@@ -223,7 +234,7 @@ test("isolation: a key of server A never reads or writes server B", async () => 
   );
   // B's summary shows nothing of A.
   assert.match(
-    await bgs(discord, GUILD_B, ADMIN, [], "summary", { period: "7d" }, { admin: true }),
+    JSON.stringify(await bgs(discord, GUILD_B, ADMIN, [], "summary", { period: "7d" }, { admin: true })),
     /Nothing reported/,
   );
   // Every channel the bot touched for B's summary is B's.
@@ -239,7 +250,7 @@ test("isolation: a key of server A never reads or writes server B", async () => 
 
 test("isolation: messages written by someone else than the bot are never read as reports", async () => {
   const { discord, channelA } = await twoServers();
-  const real = await reportMessages(PILOT, [ACTION]);
+  const real = await reportMessages(PILOT, "Faction A", [ACTION]);
   discord.postAs(channelA, OUTSIDER, real[0]);
   assert.deepEqual(await readActions(discord.api, channelA, BOT_ID, "2026-11-01T00:00:00Z"), []);
 });
@@ -309,7 +320,8 @@ test("setup: creates the BGS role, the data channel and the reading channel", as
   assert.doesNotMatch(again, /Created/);
   assert.equal(guild.roles.length, 1);
   assert.equal(guild.channels.length, 2);
-  assert.equal((await readConfig(discord.api, sync.id, BOT_ID)).config.faction, "Faction B");
+  // A faction given again is added; the first one stays the default.
+  assert.deepEqual((await readConfig(discord.api, sync.id, BOT_ID)).config.factions, ["Faction A", "Faction B"]);
 });
 
 test("admin commands: setup and revoke refused to members without the rights", async () => {
@@ -400,6 +412,172 @@ test("daily recap: once per tick, in the channel, for the past BGS day", async (
   await send([{ ...ACTION, at: "2026-11-13T19:40:00Z", system: "Late" }], "2026-11-13T19:30:00.000Z");
   await send([{ ...ACTION, at: "2026-11-13T19:45:00Z", system: "Later" }], "2026-11-13T19:30:00.000Z");
   assert.equal(recaps().length, 1);
-  assert.match(recaps()[0].content, /Synuefe XR-H d11-102/);
-  assert.doesNotMatch(recaps()[0].content, /Late/);
+  const card = JSON.stringify(recaps()[0].embeds);
+  assert.match(card, /Synuefe XR-H d11-102/);
+  assert.match(card, /Faction A/);
+  assert.doesNotMatch(card, /Late/);
+});
+
+test("factions: admins add, set the default and remove; members only list", async () => {
+  const { discord, channelA } = await twoServers();
+  const factions = async () => (await readConfig(discord.api, channelA, BOT_ID)).config.factions;
+  // Members can't change them.
+  assert.match(await bgs(discord, GUILD_A, PILOT, [ROLE_A], "faction add", { name: "Ally" }), /Only admins/);
+  const added = await bgs(
+    discord,
+    GUILD_A,
+    ADMIN,
+    [],
+    "faction add",
+    { name: "Amicale des Compagnons de l'Espace" },
+    { admin: true },
+  );
+  assert.match(JSON.stringify(added.embeds), /Amicale/);
+  assert.deepEqual(await factions(), ["Faction A", "Amicale des Compagnons de l'Espace"]);
+  assert.match(
+    await bgs(discord, GUILD_A, ADMIN, [], "faction add", { name: "faction a" }, { admin: true }),
+    /already/,
+  );
+  await bgs(
+    discord,
+    GUILD_A,
+    ADMIN,
+    [],
+    "faction default",
+    { name: "amicale des compagnons de l'espace" },
+    { admin: true },
+  );
+  assert.deepEqual(await factions(), ["Amicale des Compagnons de l'Espace", "Faction A"]);
+  // The list: a card for members, with menus for admins only.
+  const seen = await bgs(discord, GUILD_A, PILOT, [ROLE_A], "faction list", {});
+  assert.match(seen.embeds[0].description, /⭐ \*\*Amicale/);
+  assert.equal(seen.components.length, 0);
+  const adminList = await bgs(discord, GUILD_A, ADMIN, [], "faction list", {}, { admin: true });
+  assert.equal(adminList.components.length, 2);
+  assert.match(await bgs(discord, GUILD_A, OUTSIDER, [], "faction list", {}), /need the/);
+  await bgs(discord, GUILD_A, ADMIN, [], "faction remove", { name: "Faction A" }, { admin: true });
+  assert.deepEqual(await factions(), ["Amicale des Compagnons de l'Espace"]);
+  assert.match(
+    await bgs(discord, GUILD_A, ADMIN, [], "faction remove", { name: "Nope" }, { admin: true }),
+    /isn't followed/,
+  );
+  // Server B is untouched.
+  const channelB = discord.guild(GUILD_B).channels.find((c) => c.name === "edch-sync").id;
+  assert.deepEqual((await readConfig(discord.api, channelB, BOT_ID)).config.factions, ["Faction B"]);
+});
+
+test("factions: reports for each followed faction, kept apart in the summary", async () => {
+  const { discord } = await twoServers();
+  await bgs(discord, GUILD_A, ADMIN, [], "faction add", { name: "Ally" }, { admin: true });
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
+  const config = await handleApi("GET", "/v1/config", `Bearer ${key}`, null, env(), discord.api);
+  assert.deepEqual(config.body.factions, ["Faction A", "Ally"]);
+  const send = (faction, system) =>
+    handleApi(
+      "POST",
+      "/v1/report",
+      `Bearer ${key}`,
+      JSON.stringify(report(faction, [{ ...ACTION, system }])),
+      env(),
+      discord.api,
+    );
+  assert.equal((await send("ally", "Ally Home")).status, 200);
+  assert.equal((await send("Faction A", "Main Home")).status, 200);
+  assert.equal((await send("Faction B", "Elsewhere")).body.error, "otherFaction");
+  const all = await bgs(discord, GUILD_A, PILOT, [ROLE_A], "summary", { period: "7d" });
+  assert.deepEqual(
+    all.embeds.map((e) => e.title),
+    ["Faction A", "Ally"],
+  );
+  assert.match(all.embeds[1].description, /Ally Home/);
+  assert.doesNotMatch(all.embeds[1].description, /Main Home/);
+  const one = await bgs(discord, GUILD_A, PILOT, [ROLE_A], "summary", { period: "7d", faction: "Ally" });
+  assert.deepEqual(
+    one.embeds.map((e) => e.title),
+    ["Ally"],
+  );
+  // With several factions, the thread line names it.
+  const threads = discord.threads(bgsChannel(discord, GUILD_A));
+  assert.match(threads["Ally Home"].messages[0].content, /\*\*Ally\*\*/);
+});
+
+test("factions: the list's menus (admins), and names offered as you type", async () => {
+  const { discord, channelA } = await twoServers();
+  await bgs(discord, GUILD_A, ADMIN, [], "faction add", { name: "Ally" }, { admin: true });
+  const ctx = { env: env(), api: discord.api, botUrl: BOT_URL, now: NOW, tick: async () => null };
+  const base = (userId, admin) => ({
+    token: `menu-${userId}-${admin}`,
+    application_id: BOT_ID,
+    guild_id: GUILD_A,
+    member: { user: { id: userId }, roles: [ROLE_A], permissions: admin ? "8" : "0" },
+  });
+  const menu = (userId, admin, customId, value) =>
+    handleInteraction({ ...base(userId, admin), type: 3, data: { custom_id: customId, values: [value] } }, ctx);
+  const refused = await menu(PILOT, false, "bgs:faction:remove", "Ally");
+  assert.match(refused.response.data.content, /Only admins/);
+  const chosen = await menu(ADMIN, true, "bgs:faction:default", "Ally");
+  assert.equal(chosen.response.type, 6);
+  await chosen.later();
+  assert.deepEqual((await readConfig(discord.api, channelA, BOT_ID)).config.factions, ["Ally", "Faction A"]);
+  // Autocomplete: the server's own factions only.
+  const typed = await handleInteraction(
+    {
+      ...base(PILOT, false),
+      type: 4,
+      data: {
+        name: "bgs",
+        options: [
+          {
+            type: 2,
+            name: "faction",
+            options: [{ type: 1, name: "remove", options: [{ name: "name", value: "al", focused: true }] }],
+          },
+        ],
+      },
+    },
+    ctx,
+  );
+  assert.deepEqual(typed.response, { type: 8, data: { choices: [{ name: "Ally", value: "Ally" }] } });
+  // Adding: what was typed first, then the game's factions (admins only: members get no search).
+  const searched = [];
+  const searchCtx = {
+    ...ctx,
+    searchFactions: async (t) => (searched.push(t), ["Amicale des Compagnons de l'Espace", "Amicale"]),
+  };
+  const adding = (admin) =>
+    handleInteraction(
+      {
+        ...base(admin ? ADMIN : PILOT, admin),
+        type: 4,
+        data: {
+          name: "bgs",
+          options: [
+            {
+              type: 2,
+              name: "faction",
+              options: [{ type: 1, name: "add", options: [{ name: "name", value: "Amicale", focused: true }] }],
+            },
+          ],
+        },
+      },
+      searchCtx,
+    );
+  assert.deepEqual(
+    (await adding(true)).response.data.choices.map((c) => c.value),
+    ["Amicale", "Amicale des Compagnons de l'Espace"],
+  );
+  assert.deepEqual(
+    (await adding(false)).response.data.choices.map((c) => c.value),
+    ["Amicale"],
+  );
+  assert.deepEqual(searched, ["Amicale"]);
+});
+
+test("setup without a faction: channels and role first, factions added after", async () => {
+  const discord = fakeDiscord();
+  discord.addGuild(GUILD_A, { withChannel: false });
+  const answer = await bgs(discord, GUILD_A, ADMIN, [], "setup", {}, { admin: true });
+  assert.match(answer, /faction add/);
+  const sync = discord.guild(GUILD_A).channels.find((c) => c.name === "edch-sync");
+  assert.deepEqual((await readConfig(discord.api, sync.id, BOT_ID)).config.factions, []);
 });

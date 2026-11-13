@@ -3,7 +3,7 @@
 // data lives in that server's #edch-bgs channel (storage.ts).
 
 import { handleApi } from "./api.js";
-import { handleInteraction, TICK_URL } from "./commands.js";
+import { handleInteraction, searchGameFactions, TICK_URL } from "./commands.js";
 import { verifyDiscordSignature } from "./crypto.js";
 import { discordRest } from "./discordRest.js";
 import type { Env } from "./types.js";
@@ -46,6 +46,7 @@ export default {
         botUrl: url.origin,
         now: Date.now(),
         tick: lastTick,
+        searchFactions: searchGameFactions,
       });
       if (answer.later) ctx.waitUntil(answer.later());
       return json(200, answer.response);

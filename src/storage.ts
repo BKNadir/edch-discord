@@ -28,6 +28,8 @@ const REPORT_MARK = "edch:r1:";
 /** Room for the data in one message, after the readable line. */
 const MAX_DATA_CHARS = 1700;
 const MAX_PAGES = 40;
+/** Factions a server can follow at once (its own and its allies). */
+export const MAX_FACTIONS = 10;
 
 /** The server's text channel of that name (the data channel by default), if there is one. */
 export async function findChannel(api: DiscordApi, guildId: string, name = SYNC_CHANNEL): Promise<string | null> {
@@ -111,7 +113,12 @@ export async function readConfig(
     const json = /```json\n([\s\S]*?)\n```/.exec(message.content)?.[1];
     try {
       const raw = JSON.parse(json ?? "");
-      if (typeof raw.faction !== "string" || typeof raw.role !== "string") continue;
+      if (typeof raw.role !== "string") continue;
+      // Older settings held one faction; now a list, the default first.
+      const listed: unknown[] = Array.isArray(raw.factions) ? raw.factions : [raw.faction];
+      const factions = listed
+        .filter((f): f is string => typeof f === "string" && f.trim().length > 0 && f.length <= 120)
+        .slice(0, MAX_FACTIONS);
       const revoked: Record<string, number> = {};
       for (const [user, time] of Object.entries(raw.revoked ?? {}))
         if (/^\d{17,20}$/.test(user) && Number.isInteger(time)) revoked[user] = time as number;
@@ -119,7 +126,7 @@ export async function readConfig(
       const id = (value: unknown) => (typeof value === "string" && /^\d{17,20}$/.test(value) ? value : undefined);
       return {
         config: {
-          faction: raw.faction,
+          factions,
           roleId: raw.role,
           bgsChannelId: id(raw.bgs),
           linkChannelId: id(raw.link),
@@ -140,14 +147,15 @@ export function configMessage(config: GuildConfig): string {
   const json = JSON.stringify({
     edch: "config",
     v: 1,
-    faction: config.faction,
+    factions: config.factions,
     role: config.roleId,
     bgs: config.bgsChannelId,
     link: config.linkChannelId,
     revoked: config.revoked,
     recap: config.recapTick,
   });
-  return `**EDCH settings** (written by the bot: change them with /bgs setup)\nFaction: **${config.faction}** · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
+  const followed = config.factions.length ? config.factions.map((f) => `**${f}**`).join(", ") : "none yet";
+  return `**EDCH settings** (written by the bot: change them with /bgs setup and /bgs faction)\nFactions: ${followed} · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
 }
 
 /** Writes the settings: edits the pinned message, or posts and pins a new one. */
@@ -179,26 +187,28 @@ const row = (a: ReportAction): Row => [
 ];
 
 /** The data of some actions as stored in a message. */
-async function encode(userId: string, rows: Row[]): Promise<string> {
-  return REPORT_MARK + base64Url(await deflate(JSON.stringify({ u: userId, a: rows })));
+async function encode(userId: string, faction: string, rows: Row[]): Promise<string> {
+  return REPORT_MARK + base64Url(await deflate(JSON.stringify({ u: userId, f: faction, a: rows })));
 }
 
 /**
  * The messages of a report: as many as needed for the data to fit, each with the readable line
  * ("<@member> · 12 actions") and its share of the actions.
  */
-export async function reportMessages(userId: string, actions: ReportAction[]): Promise<string[]> {
+export async function reportMessages(userId: string, faction: string, actions: ReportAction[]): Promise<string[]> {
   const messages: string[] = [];
   let pending: Row[] = [];
   const flush = async () => {
     if (!pending.length) return;
     const count = pending.length;
-    messages.push(`📥 <@${userId}> · ${count} action${count > 1 ? "s" : ""}\n||${await encode(userId, pending)}||`);
+    messages.push(
+      `📥 <@${userId}> · ${faction} · ${count} action${count > 1 ? "s" : ""}\n||${await encode(userId, faction, pending)}||`,
+    );
     pending = [];
   };
   for (const action of actions) {
     pending.push(row(action));
-    if ((await encode(userId, pending)).length > MAX_DATA_CHARS) {
+    if ((await encode(userId, faction, pending)).length > MAX_DATA_CHARS) {
       const last = pending.pop()!;
       await flush();
       pending = [last];
@@ -220,6 +230,7 @@ export async function messageActions(content: string): Promise<StoredAction[]> {
       .filter((r) => Array.isArray(r) && Number.isInteger(r[0]) && ACTION_KINDS[r[1]] && typeof r[2] === "string")
       .map((r) => ({
         userId: raw.u,
+        faction: typeof raw.f === "string" ? raw.f : undefined,
         at: new Date(r[0] * 1000).toISOString(),
         kind: ACTION_KINDS[r[1]],
         system: r[2],

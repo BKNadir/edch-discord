@@ -98,3 +98,51 @@ export function summaryText(faction: string, periodLabel: string, actions: Store
   }
   return text;
 }
+
+/** The embeds' colour: Elite's orange. */
+export const EMBED_COLOR = 0xf07b05;
+/** Discord: 4096 characters in an embed's description, 6000 for all the embeds of a message. */
+const MAX_DESCRIPTION = 3800;
+const MAX_EMBEDS_TEXT = 5500;
+
+/** The actions of each faction (those reported before factions were stored go to the default). */
+export function byFaction(factions: string[], actions: StoredAction[]): Map<string, StoredAction[]> {
+  const groups = new Map<string, StoredAction[]>(factions.map((f) => [f, []]));
+  const fallback = factions[0];
+  for (const action of actions) {
+    const name =
+      factions.find((f) => f.toLowerCase() === (action.faction ?? fallback ?? "").toLowerCase()) ?? action.faction;
+    if (!name) continue;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name)!.push(action);
+  }
+  return groups;
+}
+
+/**
+ * The summary as Discord embeds (cards): one per faction, the default first, each with its
+ * systems (busiest first) and who worked there, cut to fit Discord's limits.
+ */
+export function summaryEmbeds(
+  factions: string[],
+  periodLabel: string,
+  actions: StoredAction[],
+): Record<string, unknown>[] {
+  const embeds: Record<string, unknown>[] = [];
+  let used = 0;
+  for (const [faction, own] of byFaction(factions, actions)) {
+    if (embeds.length >= 10 || used >= MAX_EMBEDS_TEXT) break;
+    const text = summaryText(faction, periodLabel, own).split("\n").slice(1).join("\n");
+    const members = new Set(own.map((a) => a.userId)).size;
+    let description = text.length > MAX_DESCRIPTION ? `${text.slice(0, MAX_DESCRIPTION)}…` : text;
+    if (used + description.length > MAX_EMBEDS_TEXT) description = "…";
+    used += description.length;
+    embeds.push({
+      title: faction,
+      color: EMBED_COLOR,
+      description,
+      footer: { text: `${periodLabel} · ${own.length} actions · ${members} member${members === 1 ? "" : "s"}` },
+    });
+  }
+  return embeds;
+}

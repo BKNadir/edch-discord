@@ -1,7 +1,19 @@
 // The Discord calls (REST API v10) with the bot's token. Mentions in the bot's messages never
 // notify anyone (allowed_mentions: none); a rate limit gets one short wait and one retry.
 
-import { type DiscordApi, type DiscordChannel, DiscordHttpError, type DiscordMessage } from "./types.js";
+import {
+  type DiscordApi,
+  type DiscordChannel,
+  DiscordHttpError,
+  type DiscordMessage,
+  type MessagePayload,
+} from "./types.js";
+
+/** A message as Discord's JSON: no mention ever notifies anyone. */
+const asBody = (message: string | MessagePayload) => ({
+  ...(typeof message === "string" ? { content: message } : message),
+  allowed_mentions: { parse: [] },
+});
 
 const API = "https://discord.com/api/v10";
 
@@ -103,8 +115,8 @@ export function discordRest(botToken: string): DiscordApi {
       // Discord gives them newest first.
       return messages.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
     },
-    sendMessage: (channelId, content) =>
-      json<DiscordMessage>("POST", `/channels/${channelId}/messages`, { content, ...quiet }),
+    sendMessage: (channelId, message) =>
+      json<DiscordMessage>("POST", `/channels/${channelId}/messages`, asBody(message)),
     async editMessage(channelId, messageId, content) {
       await json("PATCH", `/channels/${channelId}/messages/${messageId}`, { content, ...quiet });
     },
@@ -123,12 +135,12 @@ export function discordRest(botToken: string): DiscordApi {
         throw error;
       }
     },
-    async editInteractionReply(appId, interactionToken, content) {
+    async editInteractionReply(appId, interactionToken, message) {
       // The interaction's own token authorises this call, not the bot's.
       const response = await call(
         "PATCH",
         `/webhooks/${appId}/${interactionToken}/messages/@original`,
-        { content, ...quiet },
+        asBody(message),
         false,
       );
       if (!response.ok) throw new DiscordHttpError(response.status, "PATCH interaction reply");

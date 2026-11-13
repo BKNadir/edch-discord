@@ -8,7 +8,7 @@
 // All of it in #edch-bgs, the channel the BGS role reads (the data stay in #edch-sync).
 // The raw data stays in the bot's spoiler messages (storage.ts); this is only for reading.
 
-import { summaryText, totalsBySystem, type SystemTotals, shortCredits } from "./summary.js";
+import { summaryEmbeds, totalsBySystem, type SystemTotals, shortCredits } from "./summary.js";
 import type { DiscordApi, GuildConfig, StoredAction } from "./types.js";
 import { readActions, writeConfig } from "./storage.js";
 
@@ -21,8 +21,8 @@ const MAX_NAME = 100;
 /** A system's name as a thread name. */
 export const threadName = (system: string) => system.trim().slice(0, MAX_NAME);
 
-/** One member's line in a system's thread. */
-export function threadLine(userId: string, t: SystemTotals): string {
+/** One member's line in a system's thread (with the faction when the server follows several). */
+export function threadLine(userId: string, t: SystemTotals, faction?: string): string {
   const parts = [
     t.missions
       ? `${t.missions} mission${t.missions > 1 ? "s" : ""} (${t.influence >= 0 ? "+" : ""}${t.influence} inf.)`
@@ -33,7 +33,7 @@ export function threadLine(userId: string, t: SystemTotals): string {
     t.exploration ? `cartography ${shortCredits(t.exploration)}` : "",
     t.against ? `⚠️ ${t.against} against the faction` : "",
   ].filter(Boolean);
-  return `<@${userId}> · ${parts.length ? parts.join(" · ") : "activity"}`;
+  return `<@${userId}>${faction ? ` · **${faction}**` : ""} · ${parts.length ? parts.join(" · ") : "activity"}`;
 }
 
 /** The channel's threads by name, archived ones included (the most recent of each name). */
@@ -52,6 +52,7 @@ export async function writeThreadLines(
   channelId: string,
   userId: string,
   actions: StoredAction[],
+  faction?: string,
 ): Promise<number> {
   const totals = totalsBySystem(actions).slice(0, MAX_THREADS_PER_REPORT);
   if (!totals.length) return 0;
@@ -64,7 +65,7 @@ export async function writeThreadLines(
       threadId = await api.createThread(channelId, name, ARCHIVE_AFTER_MINUTES);
       threads.set(name.toLowerCase(), threadId);
     }
-    await api.sendMessage(threadId, threadLine(userId, t));
+    await api.sendMessage(threadId, threadLine(userId, t, faction));
     written += 1;
   }
   return written;
@@ -89,6 +90,9 @@ export async function postRecapIfNewTick(
   if (!previous || previous > tick) return false;
   const actions = (await readActions(api, channelId, botId, previous)).filter((a) => a.at < tick);
   const day = `BGS day ${previous.slice(0, 16).replace("T", " ")} → ${tick.slice(11, 16)} UTC`;
-  await api.sendMessage(readChannelId, `📊 **Daily recap**\n${summaryText(config.faction, day, actions)}`);
+  await api.sendMessage(readChannelId, {
+    content: "📊 **Daily recap**",
+    embeds: summaryEmbeds(config.factions, day, actions),
+  });
   return true;
 }

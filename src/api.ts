@@ -1,5 +1,6 @@
 // What EDCH calls, with the member's key (Authorization: Bearer <key>):
-//   GET  /v1/config   the faction the squadron follows (EDCH shows it next to the key)
+//   GET  /v1/config   the factions the server follows, the default first (EDCH sends a report
+//                     for each)
 //   POST /v1/report   a report (docs/BGS_SYNC.md in EDCH): written to the server's #edch-bgs, with
 //                     a line in each system's thread and, after a tick, the day's recap
 // Before anything is read or written: the key's signature, this copy's server (when it has one),
@@ -69,7 +70,8 @@ export async function handleApi(
 
   const auth = await authorise(authorization, env, api);
   if ("status" in auth) return auth;
-  if (isConfig) return { status: 200, body: { faction: auth.config.faction } };
+  if (isConfig)
+    return { status: 200, body: { faction: auth.config.factions[0] ?? null, factions: auth.config.factions } };
 
   let raw: unknown;
   try {
@@ -77,14 +79,14 @@ export async function handleApi(
   } catch {
     return fail(400, "badFormat");
   }
-  const checked = checkReport(raw, auth.config.faction);
+  const checked = checkReport(raw, auth.config.factions);
   if ("error" in checked) return fail(checked.error === "otherFaction" ? 409 : 400, checked.error);
   const { claims } = auth;
-  for (const content of await reportMessages(claims.userId, checked.actions))
+  for (const content of await reportMessages(claims.userId, checked.faction, checked.actions))
     await api.sendMessage(claims.channelId, content);
   // The readable side (threads, daily recap): the report is stored already, so a failure here
   // (a right missing, Discord busy) is logged and doesn't refuse it.
-  const stored = checked.actions.map((a) => ({ ...a, userId: claims.userId }));
+  const stored = checked.actions.map((a) => ({ ...a, userId: claims.userId, faction: checked.faction }));
   try {
     // Threads and recap go to the reading channel (the data channel for an older set-up).
     const readChannel = auth.config.bgsChannelId ?? claims.channelId;
@@ -97,7 +99,9 @@ export async function handleApi(
       auth.configMessageId,
       await tick(),
     );
-    await writeThreadLines(api, claims.guildId, readChannel, claims.userId, stored);
+    // The faction is named in the line when the server follows several.
+    const label = auth.config.factions.length > 1 ? checked.faction : undefined;
+    await writeThreadLines(api, claims.guildId, readChannel, claims.userId, stored, label);
   } catch (error) {
     console.error(`threads: ${(error as Error)?.message ?? error}`);
   }
