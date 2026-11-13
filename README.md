@@ -71,6 +71,9 @@ You need a Discord account and a Cloudflare account (the free plan is enough).
 7. `DISCORD_APPLICATION_ID=… DISCORD_BOT_TOKEN=… npm run commands`: declares `/bgs` and prints the
    link that adds the bot to a server.
 
+After a change to the bot: `npm run update` (deploys, then declares `/bgs` again; it asks for the
+bot token without showing it).
+
 EDCH knows the shared bot's address. For your own copy, the key `/bgs link` gives contains your
 address: EDCH asks you to confirm it the first time.
 
