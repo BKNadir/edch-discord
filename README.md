@@ -1,6 +1,6 @@
 # EDCH-Discord
 
-The Discord bot of [EDCH](https://github.com/BKNadir/edch) (Elite Dangerous Companion Helper): a
+The code of **EDCH**, the Discord bot of the [EDCH](https://github.com/BKNadir/edch) app (Elite Dangerous Companion Helper): a
 squadron's members send what they did for their minor faction (missions and their influence,
 bounties, combat bonds, trade, cartography, and what counted against it), and `/bgs summary` shows
 the squadron's work system by system.
@@ -39,11 +39,11 @@ Removing the role stops a member's reports at once; their past reports still cou
 
 ## For a squadron (shared bot)
 
-1. An admin adds the bot with the link given in EDCH (Sync → EDCH-Discord) or by its host.
+1. An admin adds the bot with the link given in EDCH (Sync → Connect to the Discord bot) or by its host.
 2. Create a private text channel named **`#edch-bgs`**: the bot needs to see it, read its history,
    send and manage messages (to pin its settings). Members don't need to see it.
 3. In that channel: `/bgs setup role:@YourRole faction:"Your faction"`.
-4. Each member: `/bgs link`, then in EDCH, Sync → EDCH-Discord, paste the key and tick "Send BGS
+4. Each member: `/bgs link`, then in EDCH, Sync → Connect to the Discord bot, paste the key and tick "Send BGS
    reports".
 
 ## Hosting it (the shared bot, or a squadron's own copy)
@@ -51,7 +51,7 @@ Removing the role stops a member's reports at once; their past reports still cou
 You need a Discord account and a Cloudflare account (the free plan is enough).
 
 1. **Discord**: [developer portal](https://discord.com/developers/applications) → New Application
-   "EDCH-Discord". Note the **Application ID** and the **Public Key** (General Information). Bot →
+   "EDCH". Note the **Application ID** and the **Public Key** (General Information). Bot →
    Reset Token: note the **token** (keep it secret).
 2. **Cloudflare**: `npm install`, then `npx wrangler login`.
 3. In `wrangler.toml`: `DISCORD_APPLICATION_ID`, and for your own copy `DISCORD_GUILD_ID` (your

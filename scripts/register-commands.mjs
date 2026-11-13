@@ -18,7 +18,7 @@ const ROLE = 8;
 const commands = [
   {
     name: "bgs",
-    description: "EDCH-Discord: your squadron's BGS work, reported by EDCH",
+    description: "EDCH: your squadron's BGS work, reported by the EDCH app",
     // Servers only (not direct messages), installed on a server.
     contexts: [0],
     integration_types: [0],

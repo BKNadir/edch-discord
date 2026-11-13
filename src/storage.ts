@@ -54,7 +54,7 @@ export function configMessage(config: GuildConfig): string {
     role: config.roleId,
     revoked: config.revoked,
   });
-  return `**EDCH-Discord settings** (written by the bot: change them with /bgs setup)\nFaction: **${config.faction}** · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
+  return `**EDCH settings** (written by the bot: change them with /bgs setup)\nFaction: **${config.faction}** · role: <@&${config.roleId}>\n\`\`\`json\n${json}\n\`\`\``;
 }
 
 /** Writes the settings: edits the pinned message, or posts and pins a new one. */

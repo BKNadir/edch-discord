@@ -64,7 +64,7 @@ const isAdmin = (permissions: string) => {
 };
 
 const NO_CHANNEL = `Create a private text channel named **#${CHANNEL_NAME}** where the bot can see the channel, read its history, send and manage messages, then try again. Everything the bot keeps is in that channel.`;
-const NOT_SET_UP = "EDCH-Discord isn't set up on this server yet: an admin runs `/bgs setup` first.";
+const NOT_SET_UP = "The EDCH bot isn't set up on this server yet: an admin runs `/bgs setup` first.";
 
 /** Answers one interaction. */
 export async function handleInteraction(interaction: Interaction, ctx: Context): Promise<Answer> {
@@ -72,9 +72,9 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
   if (interaction.type !== 2 || interaction.data?.name !== "bgs") return reply("Unknown command.");
   const guildId = interaction.guild_id;
   const member = interaction.member;
-  if (!guildId || !member) return reply("EDCH-Discord works in a server, not in direct messages.");
+  if (!guildId || !member) return reply("The EDCH bot works in a server, not in direct messages.");
   if (ctx.env.DISCORD_GUILD_ID && guildId !== ctx.env.DISCORD_GUILD_ID)
-    return reply("This copy of EDCH-Discord belongs to another squadron: it does nothing here.");
+    return reply("This copy of the EDCH bot belongs to another squadron: it does nothing here.");
 
   const sub = interaction.data.options?.[0];
   const option = (name: string) => sub?.options?.find((o) => o.name === name)?.value;
@@ -105,7 +105,7 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
 
   switch (sub?.name) {
     case "setup": {
-      if (!admin) return reply("Only admins (Manage Server) can set EDCH-Discord up.");
+      if (!admin) return reply("Only admins (Manage Server) can set the EDCH bot up.");
       const roleId = String(option("role") ?? "");
       const faction = String(option("faction") ?? "")
         .trim()
@@ -136,7 +136,7 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
           "```",
           key,
           "```",
-          'In EDCH: Sync → EDCH-Discord → paste the key and tick "Send BGS reports". Keep it to yourself: it reports in your name. `/bgs unlink` cancels it.',
+          'In EDCH: Sync → Connect to the Discord bot → paste the key and tick "Send BGS reports". Keep it to yourself: it reports in your name. `/bgs unlink` cancels it.',
         ].join("\n");
       });
 
