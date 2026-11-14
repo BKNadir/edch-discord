@@ -14,13 +14,15 @@ It runs as a Cloudflare Worker that answers Discord's interactions: nothing to k
 - **`#edch-sync`** (admins and the bot only): the settings (factions followed, role, channels, cancelled
   keys) in a message the bot pins, and each report in messages of the bot, the data compressed in
   a spoiler.
-- **`#edch-bgs`** (the `BGS` role, admins and the bot), read-only (only the bot writes; set up
-  again to apply it to an older channel): one thread per system
+- **`#edch-bgs`** (the `BGS` role, admins and the bot), a forum, read-only (only the bot writes;
+  set up again to apply it to an older channel). Forums need a Community server: elsewhere it is a
+  text channel with threads, and `/bgs setup` says so. One post (or thread) per system
   where the squadron works or a followed faction is, with a line per report ("@member · 3 missions
   (+7 inf.) · trade 12M") and a line when a member's visit shows the influence or states changed
   ("🛰️ @member · Faction 34.2 % (Boom) · closest Rival 30.1 %").
   Discord archives a thread after 3 days without a line (a quiet system); the next report about it
-  reopens it. After each BGS tick, the first report posts the past day's recap there.
+  reopens it. After each BGS tick, the first report posts the past day's recap there (a post of
+  its own in a forum).
 
 A server's data is read only for that server: Discord signs every command with the server it comes
 from, and the key a member gives EDCH is signed by the bot with its server and channel (it can't be

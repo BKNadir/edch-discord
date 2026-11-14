@@ -16,6 +16,8 @@ import { changedSince, snapshotLine, type StoredSnapshot, type SystemSnapshot } 
 
 /** Discord archives a thread after this long without a message: 3 days, "stable". */
 export const ARCHIVE_AFTER_MINUTES = 3 * 24 * 60;
+/** A recap post is archived a day after (it gets no other message). */
+const RECAP_ARCHIVE_MINUTES = 24 * 60;
 /** Systems written to per report at most (the busiest), to stay within the Worker's limits. */
 export const MAX_THREADS_PER_REPORT = 12;
 const MAX_NAME = 100;
@@ -55,27 +57,38 @@ export async function writeThreadLines(
   userId: string,
   actions: StoredAction[],
   faction?: string,
+  forum = false,
 ): Promise<number> {
   const totals = totalsBySystem(actions).slice(0, MAX_THREADS_PER_REPORT);
   if (!totals.length) return 0;
   const threads = await threadsByName(api, guildId, channelId);
-  let written = 0;
-  for (const t of totals) {
-    await api.sendMessage(await threadFor(api, channelId, threads, t.system), threadLine(userId, t, faction));
-    written += 1;
-  }
-  return written;
+  for (const t of totals) await writeLine(api, channelId, threads, t.system, threadLine(userId, t, faction), forum);
+  return totals.length;
 }
 
-/** The thread of a system: the existing one (archived ones reopen when written to), or a new one. */
-async function threadFor(api: DiscordApi, channelId: string, threads: Map<string, string>, system: string) {
+/**
+ * Writes a line to a system's thread: the existing one (archived ones reopen when written to),
+ * or a new one (in a forum, a post that starts with the line).
+ */
+async function writeLine(
+  api: DiscordApi,
+  channelId: string,
+  threads: Map<string, string>,
+  system: string,
+  line: string,
+  forum: boolean,
+) {
   const name = threadName(system);
-  let threadId = threads.get(name.toLowerCase());
-  if (!threadId) {
-    threadId = await api.createThread(channelId, name, ARCHIVE_AFTER_MINUTES);
-    threads.set(name.toLowerCase(), threadId);
+  const threadId = threads.get(name.toLowerCase());
+  if (threadId) {
+    await api.sendMessage(threadId, line);
+    return;
   }
-  return threadId;
+  const created = forum
+    ? await api.createThread(channelId, name, ARCHIVE_AFTER_MINUTES, line)
+    : await api.createThread(channelId, name, ARCHIVE_AFTER_MINUTES);
+  threads.set(name.toLowerCase(), created);
+  if (!forum) await api.sendMessage(created, line);
 }
 
 /**
@@ -91,6 +104,7 @@ export async function writeSnapshotLines(
   snapshots: SystemSnapshot[],
   followed: string[],
   previous: StoredSnapshot[],
+  forum = false,
 ): Promise<number> {
   const before = new Map(previous.map((s) => [s.system.toLowerCase(), s]));
   const changed = [...snapshots]
@@ -104,10 +118,7 @@ export async function writeSnapshotLines(
   if (!changed.length) return 0;
   const threads = await threadsByName(api, guildId, channelId);
   for (const snapshot of changed)
-    await api.sendMessage(
-      await threadFor(api, channelId, threads, snapshot.system),
-      snapshotLine(userId, snapshot, followed),
-    );
+    await writeLine(api, channelId, threads, snapshot.system, snapshotLine(userId, snapshot, followed), forum);
   return changed.length;
 }
 
@@ -130,9 +141,10 @@ export async function postRecapIfNewTick(
   if (!previous || previous > tick) return false;
   const actions = (await readActions(api, channelId, botId, previous)).filter((a) => a.at < tick);
   const day = `BGS day ${previous.slice(0, 16).replace("T", " ")} → ${tick.slice(11, 16)} UTC`;
-  await api.sendMessage(readChannelId, {
-    content: "📊 **Daily recap**",
-    embeds: summaryEmbeds(config.factions, day, actions),
-  });
+  const recap = { content: "📊 **Daily recap**", embeds: summaryEmbeds(config.factions, day, actions) };
+  // In a forum, every message is in a post: the recap is a post of its own.
+  if (config.bgsForum)
+    await api.createThread(readChannelId, `📊 Recap ${previous.slice(0, 10)}`, RECAP_ARCHIVE_MINUTES, recap);
+  else await api.sendMessage(readChannelId, recap);
   return true;
 }

@@ -83,19 +83,23 @@ export function discordRest(botToken: string): DiscordApi {
       );
       return answer.threads.map((t) => ({ id: t.id, name: t.name }));
     },
-    async createThread(channelId, name, autoArchiveMinutes) {
-      // 11 = public thread (in a private channel, only those who see the channel see it).
-      const thread = await json<{ id: string }>("POST", `/channels/${channelId}/threads`, {
-        name,
-        type: 11,
-        auto_archive_duration: autoArchiveMinutes,
-      });
+    async createThread(channelId, name, autoArchiveMinutes, firstMessage) {
+      // A forum post starts with its message; in a text channel, 11 = public thread (in a
+      // private channel, only those who see the channel see it).
+      const thread = await json<{ id: string }>(
+        "POST",
+        `/channels/${channelId}/threads`,
+        firstMessage === undefined
+          ? { name, type: 11, auto_archive_duration: autoArchiveMinutes }
+          : { name, auto_archive_duration: autoArchiveMinutes, message: asBody(firstMessage) },
+      );
       return thread.id;
     },
-    async createChannel(guildId, name, overwrites) {
+    async createChannel(guildId, name, overwrites, kind) {
       const channel = await json<{ id: string }>("POST", `/guilds/${guildId}/channels`, {
         name,
-        type: 0,
+        // 15 = forum: posts sorted by latest activity, archived after 3 days without a message.
+        ...(kind === "forum" ? { type: 15, default_sort_order: 0, default_auto_archive_duration: 4320 } : { type: 0 }),
         topic: "EDCH: the squadron's BGS reports (written by the bot). Members link EDCH with /bgs link.",
         permission_overwrites: overwrites,
       });

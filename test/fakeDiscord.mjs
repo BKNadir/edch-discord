@@ -91,9 +91,11 @@ export function fakeDiscord() {
         .filter(([, c]) => c.parent === channelId && c.archived)
         .map(([id, c]) => ({ id, name: c.name }));
     },
-    async createThread(channelId, name, autoArchiveMinutes) {
+    async createThread(channelId, name, autoArchiveMinutes, firstMessage) {
       const parent = channels.get(channelId);
       if (!parent) throw new Error("unknown channel");
+      // Like Discord: a forum post needs its first message; a text channel's thread has none.
+      if (Boolean(parent.forum) !== (firstMessage !== undefined)) throw new DiscordHttpError(400, "POST threads");
       const id = newId();
       channels.set(id, {
         guildId: parent.guildId,
@@ -103,6 +105,11 @@ export function fakeDiscord() {
         messages: [],
         pins: new Set(),
       });
+      if (firstMessage !== undefined) {
+        const { content = "", embeds = [] } =
+          typeof firstMessage === "string" ? { content: firstMessage } : firstMessage;
+        channels.get(id).messages.push({ id: newId(), content, embeds, author: { id: BOT_ID }, timestamp: "" });
+      }
       return id;
     },
     async applicationCommands() {
@@ -122,12 +129,14 @@ export function fakeDiscord() {
         channel.overwrites = [...(channel.overwrites ?? []).filter((o) => o.id !== overwrite.id), overwrite];
       }
     },
-    async createChannel(guildId, name, overwrites) {
+    async createChannel(guildId, name, overwrites, kind = "text") {
       const g = guilds.get(guildId);
       if (g.readOnly) throw new DiscordHttpError(403, "POST channels");
+      // Forums: Community servers only.
+      if (kind === "forum" && !g.community) throw new DiscordHttpError(400, "POST channels");
       const id = newId();
-      g.channels.push({ id, name, type: 0, overwrites });
-      channels.set(id, { guildId, messages: [], pins: new Set() });
+      g.channels.push({ id, name, type: kind === "forum" ? 15 : 0, overwrites });
+      channels.set(id, { guildId, forum: kind === "forum", messages: [], pins: new Set() });
       return id;
     },
   };
@@ -138,13 +147,14 @@ export function fakeDiscord() {
     dms,
     closedDms,
     calls,
-    addGuild(guildId, { channelName = "edch-sync", withChannel = true, readOnly = false } = {}) {
+    addGuild(guildId, { channelName = "edch-sync", withChannel = true, readOnly = false, community = true } = {}) {
       const channelId = newId();
       guilds.set(guildId, {
         channels: withChannel ? [{ id: channelId, name: channelName, type: 0 }] : [],
         roles: [],
         members: new Map(),
         readOnly,
+        community,
       });
       if (withChannel) channels.set(channelId, { guildId, messages: [], pins: new Set() });
       return channelId;

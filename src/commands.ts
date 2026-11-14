@@ -5,7 +5,7 @@
 // Admins only (Administrator or Manage Server; Discord lists subcommands to everyone, so the
 // bot checks the rights Discord signed with the command):
 //   /bgs setup [faction] [role] [link_channel]   creates the BGS role, #edch-sync (data, admins
-//       only) and #edch-bgs (reading, the role) when missing; faction: added to those followed;
+//       only) and #edch-bgs (a forum for the role, a text channel without Community) when missing; faction: added to those followed;
 //       link_channel: the only channel where /bgs link works
 //   /bgs faction add|remove|default name         the factions followed (allies on the same server):
 //       up to MAX_FACTIONS, the default first; EDCH sends a report for each
@@ -376,6 +376,8 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
         let roleId = givenRole;
         let syncId: string;
         let bgsId: string;
+        let forum = false;
+        const notes: string[] = [];
         try {
           if (!roleId) {
             const role = await ensureRole(ctx.api, guildId);
@@ -385,9 +387,24 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
           const sync = await ensureChannel(ctx.api, guildId, SYNC_CHANNEL, syncOverwrites(guildId, botId));
           syncId = sync.id;
           if (sync.created) made.push(`<#${syncId}> (data, admins only)`);
-          const bgs = await ensureChannel(ctx.api, guildId, BGS_CHANNEL, bgsOverwrites(guildId, roleId, botId));
+          // A forum (a post per system); servers without forums (not "Community") get a text channel.
+          const overwrites = bgsOverwrites(guildId, roleId, botId);
+          let bgs: { id: string; created: boolean };
+          try {
+            bgs = await ensureChannel(ctx.api, guildId, BGS_CHANNEL, overwrites, "forum");
+            forum = true;
+          } catch (error) {
+            if (!(error instanceof DiscordHttpError) || error.status !== 400) throw error;
+            bgs = await ensureChannel(ctx.api, guildId, BGS_CHANNEL, overwrites, "text");
+            notes.push(
+              `Forums need a Community server (Server Settings → Enable Community): <#${bgs.id}> is a text channel with a thread per system. Enable Community, delete it and run \`/bgs setup\` again to get a forum.`,
+            );
+          }
           bgsId = bgs.id;
-          if (bgs.created) made.push(`<#${bgsId}> (for the role, read-only)`);
+          if (bgs.created) made.push(`<#${bgsId}> (${forum ? "forum" : "channel"} for the role, read-only)`);
+          // The text channel of an older set-up isn't written to any more.
+          const old = forum ? await findChannel(ctx.api, guildId, BGS_CHANNEL, "text") : null;
+          if (old) notes.push(`<#${old}> isn't used any more (the bot writes in the forum now): you can delete it.`);
         } catch (error) {
           if (error instanceof DiscordHttpError && error.status === 403) return MISSING_PERMISSIONS;
           throw error;
@@ -404,6 +421,7 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
           factions,
           roleId,
           bgsChannelId: bgsId,
+          bgsForum: forum || undefined,
           linkChannelId: linkChannel || undefined,
           revoked: found?.config.revoked ?? {},
           recapTick: found?.config.recapTick,
@@ -411,6 +429,7 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
         await writeConfig(ctx.api, syncId, config, found?.messageId);
         return [
           made.length ? `Created ${made.join(", ")}.` : "",
+          ...notes,
           factionNote,
           factions.length
             ? `Set up: the squadron follows ${factions.map((f) => `**${f}**`).join(", ")} (\`/bgs faction add\` adds an allied faction).`

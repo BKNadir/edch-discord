@@ -24,6 +24,8 @@ export interface GuildConfig {
   roleId: string;
   /** The channel people read (threads by system, daily recap); the data channel when missing. */
   bgsChannelId?: string;
+  /** The reading channel is a forum (a post per system); a text channel with threads otherwise. */
+  bgsForum?: boolean;
   /** The only channel where /bgs link works, when the admins chose one. */
   linkChannelId?: string;
   /** Keys cancelled by /bgs revoke: member → keys issued before this time (Unix seconds) refused. */
@@ -86,11 +88,14 @@ export interface PermissionOverwrite {
   deny: string;
 }
 
+/** The kinds of channel the bot makes. */
+export type ChannelKind = "text" | "forum";
+
 /** A server's channel, as far as the bot needs it. */
 export interface DiscordChannel {
   id: string;
   name: string;
-  /** 0 = text channel. */
+  /** 0 = text channel, 15 = forum. */
   type: number;
 }
 
@@ -105,8 +110,11 @@ export interface DiscordApi {
   guildRoles(guildId: string): Promise<{ id: string; name: string }[]>;
   /** Creates a role without any permission of its own (needs Manage Roles). */
   createRole(guildId: string, name: string): Promise<string>;
-  /** Creates a text channel with these permission overwrites (needs Manage Channels). */
-  createChannel(guildId: string, name: string, overwrites: PermissionOverwrite[]): Promise<string>;
+  /**
+   * Creates a text channel or a forum with these permission overwrites (needs Manage Channels;
+   * a forum also needs a Community server, refused with 400 otherwise).
+   */
+  createChannel(guildId: string, name: string, overwrites: PermissionOverwrite[], kind: ChannelKind): Promise<string>;
   /** The application's global commands, as Discord has them. */
   applicationCommands(applicationId: string): Promise<Record<string, unknown>[]>;
   /** Replaces the application's global commands. */
@@ -117,8 +125,16 @@ export interface DiscordApi {
   activeThreads(guildId: string): Promise<{ id: string; name: string; parentId: string }[]>;
   /** The channel's archived public threads (the most recent ones). */
   archivedThreads(channelId: string): Promise<{ id: string; name: string }[]>;
-  /** Creates a public thread in the channel, archived by Discord after that long without messages. */
-  createThread(channelId: string, name: string, autoArchiveMinutes: number): Promise<string>;
+  /**
+   * Creates a public thread in a text channel, or a post in a forum (which starts with
+   * `firstMessage`), archived by Discord after that long without messages.
+   */
+  createThread(
+    channelId: string,
+    name: string,
+    autoArchiveMinutes: number,
+    firstMessage?: string | MessagePayload,
+  ): Promise<string>;
   /** The channel's server (to check that a channel belongs to the server a key names). */
   channelGuild(channelId: string): Promise<string | null>;
   pinnedMessages(channelId: string): Promise<DiscordMessage[]>;

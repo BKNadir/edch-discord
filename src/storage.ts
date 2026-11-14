@@ -3,8 +3,8 @@
 //   in a pinned message of the bot, as JSON, and each report as messages of the bot, the actions
 //   and the systems seen (systems.ts) compressed in a spoiler (Discord allows 2000 characters per
 //   message).
-// - #edch-bgs (the BGS role, admins, the bot): what people read, one thread per system and
-//   the daily recap (threads.ts).
+// - #edch-bgs (the BGS role, admins, the bot): what people read, a forum with a post per system
+//   and per daily recap (a text channel with threads where the server has no forums) (threads.ts).
 // Reading or writing always goes through a channel the request was checked against (index.ts):
 // a server's data can't be read from another server.
 
@@ -12,6 +12,7 @@ import { base64Url, fromBase64Url } from "./crypto.js";
 import { messageSnapshots, type StoredSnapshot } from "./systems.js";
 import {
   ACTION_KINDS,
+  type ChannelKind,
   type DiscordApi,
   type GuildConfig,
   type PermissionOverwrite,
@@ -33,10 +34,18 @@ const MAX_PAGES = 40;
 /** Factions a server can follow at once (its own and its allies). */
 export const MAX_FACTIONS = 10;
 
-/** The server's text channel of that name (the data channel by default), if there is one. */
-export async function findChannel(api: DiscordApi, guildId: string, name = SYNC_CHANNEL): Promise<string | null> {
+/** Discord's channel types the bot makes. */
+const CHANNEL_TYPES: Record<ChannelKind, number> = { text: 0, forum: 15 };
+
+/** The server's channel of that name and kind (the data channel by default), if there is one. */
+export async function findChannel(
+  api: DiscordApi,
+  guildId: string,
+  name = SYNC_CHANNEL,
+  kind: ChannelKind = "text",
+): Promise<string | null> {
   const channels = await api.guildChannels(guildId);
-  return channels.find((channel) => channel.type === 0 && channel.name === name)?.id ?? null;
+  return channels.find((channel) => channel.type === CHANNEL_TYPES[kind] && channel.name === name)?.id ?? null;
 }
 
 const VIEW_CHANNEL = 1n << 10n;
@@ -106,20 +115,21 @@ export async function ensureRole(api: DiscordApi, guildId: string): Promise<{ id
     : { id: await api.createRole(guildId, ROLE_NAME), created: true };
 }
 
-/** The text channel of that name, created with these permissions when the server has none. */
+/** The channel of that name and kind, created with these permissions when the server has none. */
 export async function ensureChannel(
   api: DiscordApi,
   guildId: string,
   name: string,
   overwrites: PermissionOverwrite[],
+  kind: ChannelKind = "text",
 ): Promise<{ id: string; created: boolean }> {
-  const existing = await findChannel(api, guildId, name);
+  const existing = await findChannel(api, guildId, name, kind);
   if (existing) {
     // Set up again: the bot's own permissions are applied again (only those, others are kept).
     for (const overwrite of overwrites) await api.setChannelPermission(existing, overwrite);
     return { id: existing, created: false };
   }
-  return { id: await api.createChannel(guildId, name, overwrites), created: true };
+  return { id: await api.createChannel(guildId, name, overwrites, kind), created: true };
 }
 
 /** The settings pinned in the channel by the bot (`botId`), with the message holding them. */
@@ -149,6 +159,7 @@ export async function readConfig(
           factions,
           roleId: raw.role,
           bgsChannelId: id(raw.bgs),
+          bgsForum: raw.forum === true || undefined,
           linkChannelId: id(raw.link),
           revoked,
           recapTick,
@@ -170,6 +181,7 @@ export function configMessage(config: GuildConfig): string {
     factions: config.factions,
     role: config.roleId,
     bgs: config.bgsChannelId,
+    forum: config.bgsForum || undefined,
     link: config.linkChannelId,
     revoked: config.revoked,
     recap: config.recapTick,

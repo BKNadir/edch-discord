@@ -404,7 +404,11 @@ test("daily recap: once per tick, in the channel, for the past BGS day", async (
       discord.api,
       async () => tick,
     );
-  const recaps = () => discord.messages(bgsChannel(discord, GUILD_A)).filter((m) => m.content.startsWith("📊"));
+  // In a forum, each recap is a post of its own.
+  const recaps = () =>
+    Object.entries(discord.threads(bgsChannel(discord, GUILD_A)))
+      .filter(([name]) => name.startsWith("📊 Recap"))
+      .map(([, post]) => post.messages[0]);
   // First report: the tick is only noted.
   await send([{ ...ACTION, at: "2026-11-13T19:00:00Z" }], "2026-11-12T15:00:00.000Z");
   assert.equal(recaps().length, 0);
@@ -784,4 +788,55 @@ test("the bot declares /bgs itself, only when Discord's differs", async () => {
   assert.equal(covers({ a: [1, { b: 2 }] }, { a: [1, { b: 2, c: 3 }], d: 4 }), true);
   assert.equal(covers({ a: [1] }, { a: [1, 2] }), false);
   assert.equal(covers({ a: true }, {}), false);
+});
+
+test("#edch-bgs: a forum (a post per system), or a text channel where forums aren't allowed", async () => {
+  // Community server: a forum, each system a post starting with the first line.
+  const { discord } = await twoServers();
+  const guild = discord.guild(GUILD_A);
+  const reading = guild.channels.find((c) => c.name === "edch-bgs");
+  assert.equal(reading.type, 15);
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
+  await handleApi(
+    "POST",
+    "/v1/report",
+    `Bearer ${key}`,
+    JSON.stringify(report("Faction A", [ACTION])),
+    env(),
+    discord.api,
+  );
+  await handleApi(
+    "POST",
+    "/v1/report",
+    `Bearer ${key}`,
+    JSON.stringify(report("Faction A", [{ ...ACTION, at: "2026-11-13T19:10:00Z" }])),
+    env(),
+    discord.api,
+  );
+  const posts = discord.threads(reading.id);
+  assert.deepEqual(Object.keys(posts), ["Synuefe XR-H d11-102"]);
+  assert.equal(posts["Synuefe XR-H d11-102"].messages.length, 2);
+  assert.match(posts["Synuefe XR-H d11-102"].messages[0].content, /1 mission/);
+
+  // Not a Community server: a text channel, and the admin is told why.
+  const other = fakeDiscord();
+  other.addGuild(GUILD_B, { withChannel: false, community: false });
+  const answer = await bgs(other, GUILD_B, ADMIN, [], "setup", { faction: "Faction B" }, { admin: true });
+  assert.match(answer, /Community/);
+  assert.equal(other.guild(GUILD_B).channels.find((c) => c.name === "edch-bgs").type, 0);
+});
+
+test("setting up again on an older server: the forum is made, the old text channel named", async () => {
+  const discord = fakeDiscord();
+  discord.addGuild(GUILD_A, { withChannel: false, community: false });
+  await bgs(discord, GUILD_A, ADMIN, [], "setup", { faction: "Faction A" }, { admin: true });
+  const guild = discord.guild(GUILD_A);
+  const oldId = guild.channels.find((c) => c.name === "edch-bgs").id;
+  guild.community = true;
+  const answer = await bgs(discord, GUILD_A, ADMIN, [], "setup", {}, { admin: true });
+  assert.match(answer, new RegExp(`<#${oldId}> isn't used any more`));
+  const sync = guild.channels.find((c) => c.name === "edch-sync");
+  const { config } = await readConfig(discord.api, sync.id, BOT_ID);
+  assert.equal(config.bgsForum, true);
+  assert.notEqual(config.bgsChannelId, oldId);
 });

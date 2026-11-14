@@ -123,7 +123,8 @@ export async function handleApi(
     );
     // The faction is named in the line when the server follows several.
     const label = auth.config.factions.length > 1 ? checked.faction : undefined;
-    await writeThreadLines(api, claims.guildId, readChannel, claims.userId, stored, label);
+    const forum = Boolean(auth.config.bgsForum && auth.config.bgsChannelId);
+    await writeThreadLines(api, claims.guildId, readChannel, claims.userId, stored, label, forum);
     await writeSnapshotLines(
       api,
       claims.guildId,
@@ -132,6 +133,7 @@ export async function handleApi(
       snapshots,
       auth.config.factions,
       previous,
+      forum,
     );
   } catch (error) {
     console.error(`threads: ${(error as Error)?.message ?? error}`);
