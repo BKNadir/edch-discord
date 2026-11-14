@@ -83,8 +83,10 @@ async function runJob(work) {
 /** Runs a command in the bot's folder, its output in the page; resolves with it, rejects on failure. */
 function local(command, args, { input, quiet = false } = {}) {
   return new Promise((resolve, reject) => {
-    // npm and npx are .cmd files on Windows: they need the shell there.
-    const child = spawn(command, args, { cwd: ROOT, shell: IS_WINDOWS, env: { ...process.env, FORCE_COLOR: "0" } });
+    // npm and npx are .cmd files on Windows: they need the shell there. Node itself doesn't (and
+    // its path, "C:\Program Files\…", would be cut at the space by the shell).
+    const shell = IS_WINDOWS && (command === "npm" || command === "npx");
+    const child = spawn(command, args, { cwd: ROOT, shell, env: { ...process.env, FORCE_COLOR: "0" } });
     let output = "";
     const take = (chunk) => {
       output += chunk;
