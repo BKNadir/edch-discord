@@ -20,6 +20,7 @@ export function fakeDiscord() {
   const closedDms = new Set();
   const calls = [];
 
+  let commands = [];
   const api = {
     async memberRoles(guildId, userId) {
       calls.push(["memberRoles", guildId]);
@@ -103,6 +104,15 @@ export function fakeDiscord() {
         pins: new Set(),
       });
       return id;
+    },
+    async applicationCommands() {
+      calls.push(["commands"]);
+      return commands;
+    },
+    async setApplicationCommands(_applicationId, list) {
+      calls.push(["setCommands"]);
+      // Discord answers with its own fields added, and leaves out defaults.
+      commands = JSON.parse(JSON.stringify(list)).map((c, i) => ({ id: String(i + 1), version: "1", ...c }));
     },
     async setChannelPermission(channelId, overwrite) {
       for (const g of guilds.values()) {

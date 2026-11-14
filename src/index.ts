@@ -3,9 +3,13 @@
 // data lives in that server's #edch-bgs channel (storage.ts).
 
 import { handleApi } from "./api.js";
-import { handleInteraction, searchGameFactions, TICK_URL } from "./commands.js";
+import { handleInteraction, TICK_URL } from "./commands.js";
+import { factionList, type FactionList, searchFactionList } from "./factionList.js";
+// Built by scripts/build-factions.mjs (npm run update); bundled as text.
+import FACTIONS_TEXT from "./generated/factions.txt";
 import { verifyDiscordSignature } from "./crypto.js";
 import { discordRest } from "./discordRest.js";
+import { syncCommands } from "./syncCommands.js";
 import type { Env } from "./types.js";
 
 /** Discord's interactions are small; anything bigger isn't one. */
@@ -13,6 +17,10 @@ const MAX_INTERACTION_BYTES = 64 * 1024;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+/** The game's factions, read once per Worker instance (the first search). */
+let factions: FactionList | null = null;
+const searchGameFactions = async (typed: string) => searchFactionList((factions ??= factionList(FACTIONS_TEXT)), typed);
 
 /** The last BGS tick from EDCD's tick detector, or null. */
 async function lastTick(): Promise<string | null> {
@@ -25,10 +33,25 @@ async function lastTick(): Promise<string | null> {
   }
 }
 
+/** Whether this Worker instance checked the /bgs command (once each; again after a failure). */
+let commandsChecked = false;
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const api = discordRest(env.DISCORD_BOT_TOKEN);
+    if (!commandsChecked && env.DISCORD_APPLICATION_ID) {
+      commandsChecked = true;
+      // In the background: the answer doesn't wait for it.
+      ctx.waitUntil(
+        syncCommands(api, env.DISCORD_APPLICATION_ID)
+          .then((sent) => sent && console.log("/bgs declared again"))
+          .catch((error) => {
+            commandsChecked = false;
+            console.error(`commands: ${(error as Error)?.message ?? error}`);
+          }),
+      );
+    }
 
     if (url.pathname === "/interactions" && request.method === "POST") {
       const body = await request.text();

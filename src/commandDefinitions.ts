@@ -1,14 +1,5 @@
-// Declares /bgs to Discord (once after creating the application, and after changing
-// the commands), then prints the link that adds the bot to a server.
-//   DISCORD_APPLICATION_ID=… DISCORD_BOT_TOKEN=… node scripts/register-commands.mjs
-// The token is read from the environment only; it is never written anywhere.
-
-const applicationId = process.env.DISCORD_APPLICATION_ID;
-const token = process.env.DISCORD_BOT_TOKEN;
-if (!applicationId || !token) {
-  console.error("Set DISCORD_APPLICATION_ID and DISCORD_BOT_TOKEN first.");
-  process.exit(1);
-}
+// The /bgs command as Discord shows it: its subcommands and their options. The bot declares it
+// itself (syncCommands.ts) when it starts, with its own token: no one has to run a script for it.
 
 const SUB_COMMAND = 1;
 const SUB_COMMAND_GROUP = 2;
@@ -30,7 +21,8 @@ const factionChoice = {
   max_length: 100,
 };
 
-const commands = [
+/** What Discord shows for /bgs (its subcommands and their options). */
+export const COMMANDS: Record<string, unknown>[] = [
   {
     name: "bgs",
     description: "EDCH: your squadron's BGS work, reported by the EDCH app",
@@ -116,50 +108,15 @@ const commands = [
             ],
           },
           {
-            ...factionChoice,
+            // Optional: no "required" key (Discord leaves defaults out when it lists commands).
+            type: STRING,
             name: "faction",
-            required: false,
             description: "Only this faction (all followed by default)",
+            autocomplete: true,
+            max_length: 100,
           },
         ],
       },
     ],
   },
 ];
-
-const response = await fetch(`https://discord.com/api/v10/applications/${applicationId}/commands`, {
-  method: "PUT",
-  headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
-  body: JSON.stringify(commands),
-});
-if (!response.ok) {
-  console.error(`Discord refused the commands: ${response.status} ${await response.text()}`);
-  process.exit(1);
-}
-console.log("/bgs is declared.");
-
-// What the bot needs: create the BGS role and its two channels (/bgs setup); in
-// #edch-sync see it, read its history, send, manage and pin messages; in #edch-bgs write one
-// thread per system.
-const VIEW_CHANNEL = 1n << 10n;
-const SEND_MESSAGES = 1n << 11n;
-const MANAGE_MESSAGES = 1n << 13n;
-const READ_MESSAGE_HISTORY = 1n << 16n;
-const PIN_MESSAGES = 1n << 51n;
-const MANAGE_CHANNELS = 1n << 4n;
-const MANAGE_ROLES = 1n << 28n;
-const CREATE_PUBLIC_THREADS = 1n << 35n;
-const SEND_MESSAGES_IN_THREADS = 1n << 38n;
-const permissions =
-  MANAGE_CHANNELS |
-  MANAGE_ROLES |
-  VIEW_CHANNEL |
-  SEND_MESSAGES |
-  MANAGE_MESSAGES |
-  READ_MESSAGE_HISTORY |
-  PIN_MESSAGES |
-  CREATE_PUBLIC_THREADS |
-  SEND_MESSAGES_IN_THREADS;
-console.log(
-  `Add the bot to a server (needs Manage Server there):\nhttps://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot%20applications.commands&permissions=${permissions}`,
-);

@@ -17,8 +17,8 @@
 //   /bgs summary [period] [faction]   what the squadron did, one card per faction
 // Slash commands leave nothing in the channel: every answer is seen by the member only.
 // Answers that need Discord's API are deferred (Discord gives 3 seconds) and written after.
-// Faction names are offered as you type (autocomplete): the game's factions (EliteBGS) when one is
-// added, those the server follows elsewhere.
+// Faction names are offered as you type (autocomplete): when one is added, those the members saw
+// and the game's (a list bundled with the bot, factionList.ts); elsewhere, those followed.
 
 import { makeKey } from "./key.js";
 import {
@@ -65,9 +65,7 @@ const MENU_REMOVE = "bgs:faction:remove";
 export const MAX_FACTION_NAME = 100;
 
 export const TICK_URL = "https://tick.edcd.io/api/tick";
-/** EliteBGS (public BGS data): the game's factions whose name starts with what an admin types. */
-export const FACTION_SEARCH_URL = "https://elitebgs.app/api/ebgs/v5/factions";
-/** Discord waits 3 seconds for the choices: each source gets two of them, at the same time. */
+/** Discord waits 3 seconds for the choices: the server's own data gets two of them. */
 const SEARCH_TIMEOUT_MS = 2000;
 /** The factions members saw this many days back are offered when adding one. */
 const SEEN_DAYS = 7;
@@ -80,22 +78,6 @@ function withinTime<T>(work: Promise<T>, fallback: T): Promise<T> {
   ]);
 }
 
-/** The game's factions starting with `typed` (EliteBGS), or [] when it doesn't answer in time. */
-export async function searchGameFactions(typed: string): Promise<string[]> {
-  if (typed.trim().length < 2) return [];
-  try {
-    const url = `${FACTION_SEARCH_URL}?minimal=true&beginsWith=${encodeURIComponent(typed.trim())}`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
-    if (!response.ok) return [];
-    const answer = (await response.json()) as { docs?: { name?: unknown }[] };
-    return (answer.docs ?? [])
-      .map((d) => d.name)
-      .filter((n): n is string => typeof n === "string" && n.length > 0 && n.length <= MAX_FACTION_NAME);
-  } catch {
-    return [];
-  }
-}
-
 export interface Context {
   env: Env;
   api: DiscordApi;
@@ -104,7 +86,7 @@ export interface Context {
   now: number;
   /** The last BGS tick (ISO), or null when unknown. */
   tick: () => Promise<string | null>;
-  /** The game's factions starting with a text (autocomplete of /bgs faction add). */
+  /** The game's factions matching a text (autocomplete of /bgs faction add), from the bundled list. */
   searchFactions?: (typed: string) => Promise<string[]>;
 }
 
@@ -243,7 +225,7 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
 
   // Typing a faction's name (Discord shows at most 25 choices):
   // - /bgs faction add: what was typed first, the factions members saw in their systems, then the
-  //   game's factions starting with it (EliteBGS);
+  //   game's factions matching it (the list bundled with the bot);
   // - elsewhere: those the server follows that contain it.
   if (interaction.type === AUTOCOMPLETE) {
     const typed = String(options.find((o) => o.focused)?.value ?? "")
@@ -251,20 +233,25 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
       .slice(0, MAX_FACTION_NAME);
     let names: string[] = [];
     if (path === "faction add" || path === "setup") {
-      // Both at once, each within the time Discord gives: the factions the members saw in their
-      // systems (this server's own data, always there) and the game's (EliteBGS, when it answers).
+      // Both at once: the factions the members saw in their systems (this server's own data,
+      // within the time Discord gives) and the game's (the bundled list, at once).
       const [seen, found] = admin
         ? await Promise.all([
             withinTime(seenFactions(), [] as string[]),
-            ctx.searchFactions ? ctx.searchFactions(typed) : Promise.resolve([] as string[]),
+            withinTime(ctx.searchFactions ? ctx.searchFactions(typed) : Promise.resolve([]), [] as string[]),
           ])
         : [[], []];
+      const followed = await withinTime(
+        load().then((loaded) => (typeof loaded === "string" ? [] : loaded.config.factions)),
+        [] as string[],
+      );
       const lower = typed.toLowerCase();
       const matching = seen
         .filter((f) => f.toLowerCase().includes(lower))
         .sort((a, b) => Number(!a.toLowerCase().startsWith(lower)) - Number(!b.toLowerCase().startsWith(lower)));
       names = [...(typed ? [typed] : []), ...matching, ...found].filter(
-        (f, i, all) => all.findIndex((o) => sameFaction(o, f)) === i,
+        (f, i, all) =>
+          all.findIndex((o) => sameFaction(o, f)) === i && (i === 0 || !followed.some((o) => sameFaction(o, f))),
       );
     } else {
       try {

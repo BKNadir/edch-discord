@@ -59,9 +59,10 @@ EDCH asks the bot which factions the server follows and sends a report for each 
 worked for. With several factions, the thread lines name the faction.
 
 While an admin types a faction to add, the bot offers the factions the members saw in their
-systems over the last 7 days (the server's own data, always there), and asks
-[EliteBGS](https://elitebgs.app) for the game's factions starting with it (only the typed text is sent, nothing about the server or the
-member); if EliteBGS doesn't answer in time, only the typed text is offered. The factions already
+systems over the last 7 days (the server's own data) and the game's minor factions from a list
+bundled with the bot: `npm run update` builds it from EDSM's nightly dump of the populated systems
+(scripts/build-factions.mjs; no website is asked while typing). A faction newer than the list can
+still be typed in full. The factions already
 followed are offered in `remove`, `default` and `summary`.
 
 `setup`, `revoke` and `faction add|remove|default` are listed to everyone (Discord shows every subcommand) but the bot refuses
@@ -103,14 +104,16 @@ You need a Discord account and a Cloudflare account (the free plan is enough).
    npx wrangler secret put DISCORD_BOT_TOKEN
    npx wrangler secret put LINK_SECRET        # any long random text; changing it cancels every key
    ```
-5. `npm run deploy`: note the address (`https://edch-discord.<you>.workers.dev`).
+5. `npm run deploy` (builds the faction list, then deploys): note the address
+   (`https://edch-discord.<you>.workers.dev`).
 6. Developer portal → General Information → **Interactions Endpoint URL**:
    `https://edch-discord.<you>.workers.dev/interactions` (Discord checks it right away).
-7. `DISCORD_APPLICATION_ID=… DISCORD_BOT_TOKEN=… npm run commands`: declares `/bgs` and prints the
-   link that adds the bot to a server.
+7. Add the bot to your server with the developer portal's Installation link. The bot declares
+   `/bgs` itself (with its own token, the secret above) at its first request after each deploy,
+   and only when it changed.
 
-After a change to the bot: `npm run update` (deploys, then declares `/bgs` again; it asks for the
-bot token without showing it).
+After a change to the bot: `npm run update` (builds the faction list, deploys, and wakes the bot
+up so it declares `/bgs`; nothing to type).
 
 EDCH knows the shared bot's address. For your own copy, the key `/bgs link` gives contains your
 address: EDCH asks you to confirm it the first time.

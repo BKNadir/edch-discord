@@ -758,3 +758,30 @@ test("adding a faction offers those the members saw in their systems, even witho
   const all = (await typing("")).response.data.choices.map((c) => c.value);
   assert.deepEqual(all, ["Amicale des Compagnons de l'Espace", "Bad Neighbours"]);
 });
+
+test("the game's faction list: names starting with the text first, then containing it", async () => {
+  const { factionList, searchFactionList } = await import("../dist-test/factionList.js");
+  const list = factionList(
+    "Amicale des Compagnons de l'Espace\nAmicale Rouge\nDIAVOL SPACE FLEET\nLes Amis de l'Amicale\n\n",
+  );
+  assert.equal(list.names.length, 4);
+  assert.deepEqual(searchFactionList(list, "amicale"), [
+    "Amicale des Compagnons de l'Espace",
+    "Amicale Rouge",
+    "Les Amis de l'Amicale",
+  ]);
+  assert.deepEqual(searchFactionList(list, "compagnons"), ["Amicale des Compagnons de l'Espace"]);
+  assert.deepEqual(searchFactionList(list, "a"), []);
+  assert.deepEqual(searchFactionList(factionList(""), "amicale"), []);
+});
+
+test("the bot declares /bgs itself, only when Discord's differs", async () => {
+  const { syncCommands, covers } = await import("../dist-test/syncCommands.js");
+  const discord = fakeDiscord();
+  assert.equal(await syncCommands(discord.api, BOT_ID), true);
+  assert.equal(await syncCommands(discord.api, BOT_ID), false);
+  assert.equal(discord.calls.filter((c) => c[0] === "setCommands").length, 1);
+  assert.equal(covers({ a: [1, { b: 2 }] }, { a: [1, { b: 2, c: 3 }], d: 4 }), true);
+  assert.equal(covers({ a: [1] }, { a: [1, 2] }), false);
+  assert.equal(covers({ a: true }, {}), false);
+});

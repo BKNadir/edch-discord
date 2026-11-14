@@ -107,6 +107,10 @@ export interface DiscordApi {
   createRole(guildId: string, name: string): Promise<string>;
   /** Creates a text channel with these permission overwrites (needs Manage Channels). */
   createChannel(guildId: string, name: string, overwrites: PermissionOverwrite[]): Promise<string>;
+  /** The application's global commands, as Discord has them. */
+  applicationCommands(applicationId: string): Promise<Record<string, unknown>[]>;
+  /** Replaces the application's global commands. */
+  setApplicationCommands(applicationId: string, commands: Record<string, unknown>[]): Promise<void>;
   /** Sets one permission overwrite of a channel (a role or member), leaving the others alone. */
   setChannelPermission(channelId: string, overwrite: PermissionOverwrite): Promise<void>;
   /** The server's active threads, with the channel each belongs to. */

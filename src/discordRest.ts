@@ -101,6 +101,11 @@ export function discordRest(botToken: string): DiscordApi {
       });
       return channel.id;
     },
+    applicationCommands: (applicationId) =>
+      json<Record<string, unknown>[]>("GET", `/applications/${applicationId}/commands`),
+    async setApplicationCommands(applicationId, commands) {
+      await json("PUT", `/applications/${applicationId}/commands`, commands);
+    },
     async setChannelPermission(channelId, overwrite) {
       const response = await call("PUT", `/channels/${channelId}/permissions/${overwrite.id}`, {
         type: overwrite.type,
