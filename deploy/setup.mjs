@@ -92,10 +92,11 @@ async function runJob(work) {
 
 /**
  * One line of a check list: "ok", "install" (missing, the setup installs it) or "error" (blocks,
- * with the reason). Shown in the page's list and in the progress.
+ * with the reason). `key` names the line and `code` its reason for the page, which shows both in
+ * its language (with `vars`); `name` and `detail` are the English shown in the progress.
  */
-function check(list, name, status, detail = "") {
-  list.push({ name, status, detail });
+function check(list, { key, name, status, detail = "", code = "", vars = {} }) {
+  list.push({ key, name, status, detail, code, vars });
   log(`${status === "ok" ? "✔" : status === "install" ? "⬇" : "✖"} ${name}${detail ? `: ${detail}` : ""}`);
 }
 
@@ -112,12 +113,20 @@ async function reachable(url) {
 /** What this PC needs for Cloudflare: Node, npm, the tools, and the sites it talks to. */
 async function localChecks() {
   const list = [];
-  const major = Number(process.versions.node.split(".")[0]);
+  const node = process.versions.node;
+  const major = Number(node.split(".")[0]);
   check(
     list,
-    "Node.js",
-    major >= 20 ? "ok" : "error",
-    major >= 20 ? process.versions.node : `${process.versions.node}: version 20 or newer is needed (nodejs.org)`,
+    major >= 20
+      ? { key: "node", name: "Node.js", status: "ok", detail: node, code: "raw", vars: { text: node } }
+      : {
+          key: "node",
+          name: "Node.js",
+          status: "error",
+          detail: `${node}: version 20 or newer is needed (nodejs.org)`,
+          code: "nodeOld",
+          vars: { version: node, need: 20 },
+        },
   );
   let npm = "";
   try {
@@ -125,32 +134,67 @@ async function localChecks() {
   } catch {
     npm = "";
   }
-  check(list, "npm", npm ? "ok" : "error", npm || "missing: install Node.js again from nodejs.org (it comes with npm)");
+  check(
+    list,
+    npm
+      ? { key: "npm", name: "npm", status: "ok", detail: npm, code: "raw", vars: { text: npm } }
+      : {
+          key: "npm",
+          name: "npm",
+          status: "error",
+          detail: "missing: install Node.js again from nodejs.org (it comes with npm)",
+          code: "npmMissing",
+        },
+  );
   const tools = existsSync(join(ROOT, "node_modules", "wrangler"));
   const registry = tools || (await reachable("https://registry.npmjs.org/"));
   check(
     list,
-    "Setup tools (wrangler)",
-    tools ? "ok" : registry ? "install" : "error",
     tools
-      ? ""
+      ? { key: "tools", name: "Setup tools (wrangler)", status: "ok" }
       : registry
-        ? "installed now (npm install)"
-        : "missing, and the npm registry can't be reached from this PC",
+        ? {
+            key: "tools",
+            name: "Setup tools (wrangler)",
+            status: "install",
+            detail: "installed now (npm install)",
+            code: "toolsInstall",
+          }
+        : {
+            key: "tools",
+            name: "Setup tools (wrangler)",
+            status: "error",
+            detail: "missing, and the npm registry can't be reached from this PC",
+            code: "toolsNoRegistry",
+          },
   );
   const cloudflare = await reachable("https://api.cloudflare.com/client/v4/");
   check(
     list,
-    "Cloudflare",
-    cloudflare ? "ok" : "error",
-    cloudflare ? "" : "api.cloudflare.com can't be reached (firewall, proxy?)",
+    cloudflare
+      ? { key: "cloudflare", name: "Cloudflare", status: "ok" }
+      : {
+          key: "cloudflare",
+          name: "Cloudflare",
+          status: "error",
+          detail: "api.cloudflare.com can't be reached (firewall, proxy?)",
+          code: "unreachable",
+          vars: { site: "api.cloudflare.com" },
+        },
   );
   const edsm = await reachable("https://www.edsm.net/dump/systemsPopulated.json.gz");
   check(
     list,
-    "EDSM (faction list)",
-    edsm ? "ok" : "error",
-    edsm ? "" : "www.edsm.net can't be reached (firewall, proxy?)",
+    edsm
+      ? { key: "edsm", name: "EDSM (faction list)", status: "ok" }
+      : {
+          key: "edsm",
+          name: "EDSM (faction list)",
+          status: "error",
+          detail: "www.edsm.net can't be reached (firewall, proxy?)",
+          code: "unreachable",
+          vars: { site: "www.edsm.net" },
+        },
   );
   return list;
 }
@@ -401,27 +445,53 @@ async function machineChecks(conn, sudoPassword, ports = { http: "80", https: "4
       .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]),
   );
   const list = [];
-  check(list, "System", "ok", v.OS);
+  check(list, { key: "system", name: "System", status: "ok", detail: v.OS, code: "raw", vars: { text: v.OS } });
   check(
     list,
-    "Packages",
-    v.PKG === "none" ? "error" : "ok",
-    v.PKG === "none" ? "only apt (Debian, Ubuntu, Raspberry Pi OS…) and dnf (Fedora…) systems are supported" : v.PKG,
+    v.PKG === "none"
+      ? {
+          key: "packages",
+          name: "Packages",
+          status: "error",
+          detail: "only apt (Debian, Ubuntu, Raspberry Pi OS…) and dnf (Fedora…) systems are supported",
+          code: "pkgUnsupported",
+        }
+      : { key: "packages", name: "Packages", status: "ok", detail: v.PKG, code: "raw", vars: { text: v.PKG } },
   );
   const arch = ["x86_64", "aarch64", "arm64"].includes(v.ARCH);
   check(
     list,
-    "Processor",
-    arch ? "ok" : "error",
-    arch ? v.ARCH : `${v.ARCH}: Node.js 22 needs a 64-bit processor (x86_64 or arm64)`,
+    arch
+      ? { key: "processor", name: "Processor", status: "ok", detail: v.ARCH, code: "raw", vars: { text: v.ARCH } }
+      : {
+          key: "processor",
+          name: "Processor",
+          status: "error",
+          detail: `${v.ARCH}: Node.js 22 needs a 64-bit processor (x86_64 or arm64)`,
+          code: "archUnsupported",
+          vars: { arch: v.ARCH },
+        },
   );
   check(
     list,
-    "systemd",
-    v.SYSTEMD === "yes" ? "ok" : "error",
-    v.SYSTEMD === "yes" ? "" : "the bot runs as a systemd service: this system has none",
+    v.SYSTEMD === "yes"
+      ? { key: "systemd", name: "systemd", status: "ok" }
+      : {
+          key: "systemd",
+          name: "systemd",
+          status: "error",
+          detail: "the bot runs as a systemd service: this system has none",
+          code: "noSystemd",
+        },
   );
-  if (v.ROOT === "yes") check(list, "User", "error", "log in as a normal user with sudo rights, not root");
+  if (v.ROOT === "yes")
+    check(list, {
+      key: "user",
+      name: "User",
+      status: "error",
+      detail: "log in as a normal user with sudo rights, not root",
+      code: "rootUser",
+    });
   let sudo = v.HAS_sudo === "yes" && v.ROOT !== "yes";
   if (sudo) {
     try {
@@ -433,62 +503,92 @@ async function machineChecks(conn, sudoPassword, ports = { http: "80", https: "4
   if (v.ROOT !== "yes")
     check(
       list,
-      "sudo",
-      sudo ? "ok" : "error",
       sudo
-        ? ""
+        ? { key: "sudo", name: "sudo", status: "ok" }
         : v.HAS_sudo === "yes"
-          ? "this user can't use sudo, or the sudo password is wrong"
-          : "sudo isn't installed",
+          ? {
+              key: "sudo",
+              name: "sudo",
+              status: "error",
+              detail: "this user can't use sudo, or the sudo password is wrong",
+              code: "sudoDenied",
+            }
+          : { key: "sudo", name: "sudo", status: "error", detail: "sudo isn't installed", code: "sudoMissing" },
     );
   const node = Number(/^v(\d+)/.exec(v.NODE ?? "")?.[1] ?? 0);
   check(
     list,
-    "Node.js",
-    node >= 22 ? "ok" : "install",
-    node >= 22 ? v.NODE : `${v.NODE || "missing"}: Node.js 22 will be installed (official build)`,
+    node >= 22
+      ? { key: "node", name: "Node.js", status: "ok", detail: v.NODE, code: "raw", vars: { text: v.NODE } }
+      : {
+          key: "node",
+          name: "Node.js",
+          status: "install",
+          detail: `${v.NODE || "missing"}: Node.js 22 will be installed (official build)`,
+          code: "nodeInstall",
+          vars: { version: v.NODE || "" },
+        },
   );
   for (const tool of ["git", "curl"])
     check(
       list,
-      tool,
-      v[`HAS_${tool}`] === "yes" ? "ok" : "install",
-      v[`HAS_${tool}`] === "yes" ? "" : "will be installed",
+      v[`HAS_${tool}`] === "yes"
+        ? { key: tool, name: tool, status: "ok" }
+        : { key: tool, name: tool, status: "install", detail: "will be installed", code: "willInstall" },
     );
   check(
     list,
-    "Caddy (HTTPS)",
-    v.HAS_caddy === "yes" ? "ok" : "install",
-    v.HAS_caddy === "yes" ? "" : "will be installed",
+    v.HAS_caddy === "yes"
+      ? { key: "caddy", name: "Caddy (HTTPS)", status: "ok" }
+      : { key: "caddy", name: "Caddy (HTTPS)", status: "install", detail: "will be installed", code: "willInstall" },
   );
   // Caddy's ports on the machine: 80 and 443, or those chosen when they are taken.
   const listening = new Set((v.PORTS ?? "").split(/\s+/).filter(Boolean));
-  const wanted = [ports.http, ports.https];
-  const taken = wanted.filter((p) => listening.has(p));
+  const taken = [ports.http, ports.https].filter((p) => listening.has(p));
   const byCaddy = taken.length > 0 && v.HAS_caddy === "yes";
   const free = (p) => !listening.has(p);
   // Other ports to offer when 80 and 443 are taken (8080 and 8443, or the next free ones).
   const http = ["8080", "8081", "8082"].find(free);
   const https = ["8443", "8444", "8445"].find(free);
   const suggest = taken.length && !byCaddy && http && https ? { http, https } : null;
+  const portName = {
+    key: "ports",
+    name: `Ports ${ports.http} and ${ports.https}`,
+    vars: { http: ports.http, https: ports.https },
+  };
   check(
     list,
-    `Ports ${ports.http} and ${ports.https}`,
-    !taken.length || byCaddy ? "ok" : "error",
     !taken.length
-      ? "free"
+      ? { ...portName, status: "ok", detail: "free", code: "portsFree" }
       : byCaddy
-        ? "used by Caddy"
-        : `${taken.join(" and ")} already used by another program (a web server?)${suggest ? `: choose other ports, ${suggest.http} and ${suggest.https} are free` : ""}`,
+        ? { ...portName, status: "ok", detail: "used by Caddy", code: "portsCaddy" }
+        : {
+            ...portName,
+            status: "error",
+            detail: `${taken.join(" and ")} already used by another program (a web server?)${suggest ? `: choose other ports, ${suggest.http} and ${suggest.https} are free` : ""}`,
+            code: suggest ? "portsTakenSuggest" : "portsTaken",
+            vars: {
+              ...portName.vars,
+              taken: taken.join(" + "),
+              suggestHttp: suggest?.http ?? "",
+              suggestHttps: suggest?.https ?? "",
+            },
+          },
   );
   const disk = Number(v.DISK_MB ?? 0);
+  const amount = disk >= 1024 ? `${Math.round(disk / 1024)} GB` : `${disk} MB`;
   check(
     list,
-    "Disk space",
-    disk >= MIN_DISK_MB ? "ok" : "error",
     disk >= MIN_DISK_MB
-      ? `${disk >= 1024 ? `${Math.round(disk / 1024)} GB` : `${disk} MB`} free`
-      : `${disk} MB free: about ${MIN_DISK_MB} MB are needed (Node.js, Caddy and the bot take about 250 MB, the rest for updates)`,
+      ? { key: "disk", name: "Disk space", status: "ok", detail: `${amount} free`, code: "diskFree", vars: { amount } }
+      : {
+          key: "disk",
+          name: "Disk space",
+          status: "error",
+          detail: `${disk} MB free: about ${MIN_DISK_MB} MB are needed (Node.js, Caddy and the bot take about 250 MB, the rest for updates)`,
+          code: "diskLow",
+          vars: { mb: disk, need: MIN_DISK_MB },
+        },
   );
   if (v.HAS_curl === "yes") {
     const offline = ["github.com", "nodejs.org", "www.edsm.net", "www.duckdns.org"].filter(
@@ -496,11 +596,25 @@ async function machineChecks(conn, sudoPassword, ports = { http: "80", https: "4
     );
     check(
       list,
-      "Internet",
-      offline.length ? "error" : "ok",
-      offline.length ? `the machine can't reach ${offline.join(", ")}` : "",
+      offline.length
+        ? {
+            key: "internet",
+            name: "Internet",
+            status: "error",
+            detail: `the machine can't reach ${offline.join(", ")}`,
+            code: "offline",
+            vars: { sites: offline.join(", ") },
+          }
+        : { key: "internet", name: "Internet", status: "ok" },
     );
-  } else check(list, "Internet", "install", "checked once curl is installed");
+  } else
+    check(list, {
+      key: "internet",
+      name: "Internet",
+      status: "install",
+      detail: "checked once curl is installed",
+      code: "internetLater",
+    });
   return { checks: list, installed: v.INSTALLED === "yes", suggestPorts: suggest };
 }
 

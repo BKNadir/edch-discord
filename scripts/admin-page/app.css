@@ -145,6 +145,10 @@ ul {
   padding: 4px 6px;
   font-weight: 400;
 }
+.lang button.on {
+  color: var(--accent);
+  font-weight: 700;
+}
 [hidden] {
   display: none !important;
 }

@@ -168,6 +168,10 @@
         padding: 4px 6px;
         font-weight: 400;
       }
+      .lang button.on {
+        color: var(--accent);
+        font-weight: 700;
+      }
       .checks {
         list-style: none;
         padding: 0;
@@ -205,7 +209,9 @@
   <body>
     <main>
       <div class="lang">
-        <button type="button" data-lang="en">EN</button><button type="button" data-lang="fr">FR</button>
+        <button type="button" data-lang="en">EN</button><button type="button" data-lang="fr">FR</button
+        ><button type="button" data-lang="de">DE</button><button type="button" data-lang="es">ES</button
+        ><button type="button" data-lang="pt">PT</button><button type="button" data-lang="ru">RU</button>
       </div>
       <h1><span>EDCH</span> bot setup</h1>
       <p class="sub" data-t="intro"></p>
@@ -388,6 +394,43 @@
           notReady: "The machine isn't ready: see what is marked ✖.",
           notInstalled: "No EDCH bot on this machine yet.",
           closed: "Setup closed: you can close this tab.",
+          checks: {
+            tools: "Setup tools (wrangler)",
+            edsm: "EDSM (faction list)",
+            system: "System",
+            packages: "Packages",
+            processor: "Processor",
+            user: "User",
+            caddy: "Caddy (HTTPS)",
+            ports: (v) => `Ports ${v.http} and ${v.https}`,
+            disk: "Disk space",
+            internet: "Internet",
+          },
+          why: {
+            nodeOld: (v) => `${v.version}: version ${v.need} or newer is needed (nodejs.org)`,
+            npmMissing: "missing: install Node.js again from nodejs.org (it comes with npm)",
+            toolsInstall: "installed now (npm install)",
+            toolsNoRegistry: "missing, and the npm registry can't be reached from this PC",
+            unreachable: (v) => `${v.site} can't be reached (firewall, proxy?)`,
+            pkgUnsupported: "only apt (Debian, Ubuntu, Raspberry Pi OS…) and dnf (Fedora…) systems are supported",
+            archUnsupported: (v) => `${v.arch}: Node.js 22 needs a 64-bit processor (x86_64 or arm64)`,
+            noSystemd: "the bot runs as a systemd service: this system has none",
+            rootUser: "log in as a normal user with sudo rights, not root",
+            sudoDenied: "this user can't use sudo, or the sudo password is wrong",
+            sudoMissing: "sudo isn't installed",
+            nodeInstall: (v) => `${v.version || "missing"}: Node.js 22 will be installed (official build)`,
+            willInstall: "will be installed",
+            portsFree: "free",
+            portsCaddy: "used by Caddy",
+            portsTaken: (v) => `${v.taken} already used by another program (a web server?)`,
+            portsTakenSuggest: (v) =>
+              `${v.taken} already used by another program (a web server?): choose other ports, ${v.suggestHttp} and ${v.suggestHttps} are free`,
+            diskFree: (v) => `${v.amount} free`,
+            diskLow: (v) =>
+              `${v.mb} MB free: about ${v.need} MB are needed (Node.js, Caddy and the bot take about 250 MB, the rest for updates)`,
+            offline: (v) => `the machine can't reach ${v.sites}`,
+            internetLater: "checked once curl is installed",
+          },
         },
         fr: {
           intro:
@@ -457,6 +500,467 @@
           notReady: "La machine n'est pas prête : voir ce qui est marqué ✖.",
           notInstalled: "Pas encore de bot EDCH sur cette machine.",
           closed: "Installation fermée : tu peux fermer cet onglet.",
+          checks: {
+            tools: "Outils d'installation (wrangler)",
+            edsm: "EDSM (liste des factions)",
+            system: "Système",
+            packages: "Paquets",
+            processor: "Processeur",
+            user: "Utilisateur",
+            caddy: "Caddy (HTTPS)",
+            ports: (v) => `Ports ${v.http} et ${v.https}`,
+            disk: "Espace disque",
+            internet: "Internet",
+          },
+          why: {
+            nodeOld: (v) => `${v.version} : il faut la version ${v.need} ou plus récente (nodejs.org)`,
+            npmMissing: "absent : réinstalle Node.js depuis nodejs.org (npm est fourni avec)",
+            toolsInstall: "installés maintenant (npm install)",
+            toolsNoRegistry: "absents, et le registre npm est injoignable depuis ce PC",
+            unreachable: (v) => `${v.site} est injoignable (pare-feu, proxy ?)`,
+            pkgUnsupported:
+              "seuls les systèmes apt (Debian, Ubuntu, Raspberry Pi OS…) et dnf (Fedora…) sont pris en charge",
+            archUnsupported: (v) => `${v.arch} : Node.js 22 demande un processeur 64 bits (x86_64 ou arm64)`,
+            noSystemd: "le bot tourne comme service systemd : ce système n'en a pas",
+            rootUser: "connecte-toi avec un utilisateur normal ayant les droits sudo, pas root",
+            sudoDenied: "cet utilisateur ne peut pas utiliser sudo, ou le mot de passe sudo est faux",
+            sudoMissing: "sudo n'est pas installé",
+            nodeInstall: (v) => `${v.version || "absent"} : Node.js 22 sera installé (version officielle)`,
+            willInstall: "sera installé",
+            portsFree: "libres",
+            portsCaddy: "utilisés par Caddy",
+            portsTaken: (v) => `${v.taken} déjà utilisé par un autre programme (un serveur web ?)`,
+            portsTakenSuggest: (v) =>
+              `${v.taken} déjà utilisé par un autre programme (un serveur web ?) : choisis d'autres ports, ${v.suggestHttp} et ${v.suggestHttps} sont libres`,
+            diskFree: (v) => `${v.amount} libres`,
+            diskLow: (v) =>
+              `${v.mb} Mo libres : il en faut environ ${v.need} (Node.js, Caddy et le bot prennent environ 250 Mo, le reste pour les mises à jour)`,
+            offline: (v) => `la machine ne joint pas ${v.sites}`,
+            internetLater: "vérifié une fois curl installé",
+          },
+        },
+        de: {
+          intro:
+            "Diese Seite läuft nur auf deinem PC. Passwörter und Geheimnisse gehen an Cloudflare oder an deine Maschine, nirgendwo sonst hin, und werden hier nicht gespeichert.",
+          whereTitle: "Wo der Bot läuft",
+          cloudflareHelp: "Kostenloser Cloudflare-Worker: nichts muss eingeschaltet bleiben.",
+          machineName: "Deine Linux-Maschine",
+          machineHelp:
+            "Eine per SSH erreichbare Linux-Maschine (Raspberry Pi, Heimserver). Ihre Adresse kommt von DuckDNS, mit HTTPS.",
+          cfAccountHelp:
+            "Melde dich bei dem Cloudflare-Konto an, auf dem der Bot läuft (oder laufen wird): ein Cloudflare-Tab öffnet sich. Ist der Bot schon dort, wird er aktualisiert.",
+          cfAccount: "Anmelden und prüfen",
+          machineTitle: "Die Linux-Maschine",
+          sshHelp:
+            "Die Adresse der Maschine und ein Konto mit sudo-Rechten. Ein SSH-Schlüssel aus ~/.ssh wird verwendet, wenn es einen gibt.",
+          sshHost: "Adresse",
+          sshPort: "SSH-Port",
+          sshUser: "Benutzer",
+          sshPassword: "Passwort",
+          sshPasswordHelp: "Leer lassen, wenn ein SSH-Schlüssel die Maschine öffnet.",
+          moreSsh: "SSH-Schlüssel, sudo-Passwort, Ports",
+          httpPort: "HTTP-Port auf der Maschine",
+          httpsPort: "HTTPS-Port auf der Maschine",
+          portsChoiceHelp:
+            "80 und 443, außer ein anderes Programm belegt sie. Aus dem Internet sind es immer 80 und 443: zu Hause leitet der Router sie an diese Ports weiter; ein gemieteter Server (VPS) braucht 80 und 443 frei.",
+          portsSuggested: (h, s) =>
+            `Die Ports 80 und 443 sind auf der Maschine belegt: der Bot kann stattdessen ${h} und ${s} nutzen (oben eingetragen). Leite am Router den Internet-Port 80 an ${h} und 443 an ${s} weiter und prüfe dann erneut. Auf einem gemieteten Server (VPS) geht das nicht: gib dort die Ports 80 und 443 frei oder nutze Cloudflare.`,
+          sshKey: "Private Schlüsseldatei (optional)",
+          sshKeyHelp: "Leer: ~/.ssh/id_ed25519, id_ecdsa oder id_rsa, wenn es eine gibt.",
+          sshPassphrase: "Passphrase des Schlüssels (optional)",
+          sudoPassword: "sudo-Passwort (optional)",
+          sudoHelp: "Leer: das SSH-Passwort.",
+          connect: "Verbinden und prüfen",
+          update: "Bot aktualisieren",
+          openAdmin: "Admin-Seite öffnen",
+          adminLink: "Admin-Seite ↗",
+          settingsTitle: "Discord-Einstellungen",
+          token: "Bot-Token",
+          guild: "ID deines Discord-Servers (optional)",
+          guildHelp:
+            "Rechtsklick auf deinen Server (Entwicklermodus an) → Server-ID kopieren: der Bot antwortet dann nur diesem Server.",
+          duckName: "DuckDNS-Name",
+          duckHelp:
+            "Auf duckdns.org angelegt: „meinestaffel“ für meinestaffel.duckdns.org. Dein Router leitet die Ports 80 und 443 (TCP) an die Maschine weiter.",
+          duckToken: "DuckDNS-Token",
+          portsHelp:
+            "Manche Anbieter teilen eine IP zwischen Kunden (CGNAT): dann lassen sich keine Ports weiterleiten. Viele geben auf Anfrage eine öffentliche IP.",
+          newHelp:
+            "Entwicklerportal → deine Anwendung: Application ID und Public Key unter General Information, der Token unter Bot → Reset Token.",
+          updateHelp:
+            "Der Bot ist da: diese Felder sind optional. Leer: bleiben, wie sie sind. Das Signaturgeheimnis ändert sich nie, die Schlüssel der Mitglieder bleiben gültig.",
+          missingHelp: (f) =>
+            "Der Bot ist da, aber Cloudflare fehlt: " + f + ". Fülle sie aus; die anderen Felder sind optional.",
+          reinstallHelp:
+            "Mit neuen Einstellungen neu einrichten (alle nötig): neuer DuckDNS-Name, neuer Token… Die Schlüssel der Mitglieder bleiben gültig.",
+          install: "Installieren",
+          updateBtn: "Aktualisieren",
+          reinstall: "Neu einrichten",
+          progress: "Fortschritt",
+          quit: "Einrichtung schließen",
+          doneEndpoint: "Entwicklerportal → General Information → Interactions Endpoint URL:",
+          doneThen: "Dann Installation → der Installationslink fügt den Bot deinem Server hinzu.",
+          failed: "Angehalten: siehe oben.",
+          badFields: "Einige Felder müssen geprüft werden.",
+          busy: "Es läuft bereits etwas.",
+          installed: "Auf dieser Maschine ist ein EDCH-Bot.",
+          notReady: "Die Maschine ist nicht bereit: siehe die mit ✖ markierten Punkte.",
+          notInstalled: "Noch kein EDCH-Bot auf dieser Maschine.",
+          closed: "Einrichtung geschlossen: du kannst diesen Tab schließen.",
+          checks: {
+            tools: "Einrichtungswerkzeuge (wrangler)",
+            edsm: "EDSM (Fraktionsliste)",
+            system: "System",
+            packages: "Pakete",
+            processor: "Prozessor",
+            user: "Benutzer",
+            caddy: "Caddy (HTTPS)",
+            ports: (v) => `Ports ${v.http} und ${v.https}`,
+            disk: "Speicherplatz",
+            internet: "Internet",
+          },
+          why: {
+            nodeOld: (v) => `${v.version}: Version ${v.need} oder neuer wird benötigt (nodejs.org)`,
+            npmMissing: "fehlt: installiere Node.js erneut von nodejs.org (npm ist dabei)",
+            toolsInstall: "werden jetzt installiert (npm install)",
+            toolsNoRegistry: "fehlen, und die npm-Registry ist von diesem PC nicht erreichbar",
+            unreachable: (v) => `${v.site} ist nicht erreichbar (Firewall, Proxy?)`,
+            pkgUnsupported: "nur apt- (Debian, Ubuntu, Raspberry Pi OS…) und dnf-Systeme (Fedora…) werden unterstützt",
+            archUnsupported: (v) => `${v.arch}: Node.js 22 braucht einen 64-Bit-Prozessor (x86_64 oder arm64)`,
+            noSystemd: "der Bot läuft als systemd-Dienst: dieses System hat keinen",
+            rootUser: "melde dich als normaler Benutzer mit sudo-Rechten an, nicht als root",
+            sudoDenied: "dieser Benutzer darf sudo nicht nutzen, oder das sudo-Passwort ist falsch",
+            sudoMissing: "sudo ist nicht installiert",
+            nodeInstall: (v) => `${v.version || "fehlt"}: Node.js 22 wird installiert (offizielle Version)`,
+            willInstall: "wird installiert",
+            portsFree: "frei",
+            portsCaddy: "von Caddy belegt",
+            portsTaken: (v) => `${v.taken} schon von einem anderen Programm belegt (ein Webserver?)`,
+            portsTakenSuggest: (v) =>
+              `${v.taken} schon von einem anderen Programm belegt (ein Webserver?): wähle andere Ports, ${v.suggestHttp} und ${v.suggestHttps} sind frei`,
+            diskFree: (v) => `${v.amount} frei`,
+            diskLow: (v) =>
+              `${v.mb} MB frei: etwa ${v.need} MB werden gebraucht (Node.js, Caddy und der Bot belegen etwa 250 MB, der Rest ist für Updates)`,
+            offline: (v) => `die Maschine erreicht ${v.sites} nicht`,
+            internetLater: "wird geprüft, sobald curl installiert ist",
+          },
+        },
+        es: {
+          intro:
+            "Esta página solo funciona en tu PC. Las contraseñas y los secretos van a Cloudflare o a tu máquina, a ningún otro sitio, y no se guardan aquí.",
+          whereTitle: "Dónde funciona el bot",
+          cloudflareHelp: "Worker de Cloudflare gratuito: nada que mantener encendido.",
+          machineName: "Tu máquina Linux",
+          machineHelp:
+            "Una máquina Linux accesible por SSH (Raspberry Pi, servidor en casa). Su dirección viene de DuckDNS, con HTTPS.",
+          cfAccountHelp:
+            "Inicia sesión en la cuenta de Cloudflare donde funciona (o funcionará) el bot: se abre una pestaña de Cloudflare. Si el bot ya está ahí, se actualiza.",
+          cfAccount: "Iniciar sesión y comprobar",
+          machineTitle: "La máquina Linux",
+          sshHelp:
+            "La dirección de la máquina y una cuenta con permisos sudo. Se usa una clave SSH de ~/.ssh si hay una.",
+          sshHost: "Dirección",
+          sshPort: "Puerto SSH",
+          sshUser: "Usuario",
+          sshPassword: "Contraseña",
+          sshPasswordHelp: "Déjala vacía si una clave SSH abre la máquina.",
+          moreSsh: "Clave SSH, contraseña sudo, puertos",
+          httpPort: "Puerto HTTP en la máquina",
+          httpsPort: "Puerto HTTPS en la máquina",
+          portsChoiceHelp:
+            "80 y 443, salvo que otro programa los use. Desde Internet siempre son 80 y 443: en casa, el router los redirige a estos puertos; un servidor alquilado (VPS) necesita 80 y 443 libres.",
+          portsSuggested: (h, s) =>
+            `Los puertos 80 y 443 están ocupados en la máquina: el bot puede usar ${h} y ${s} en su lugar (rellenados arriba). En tu router, redirige el puerto 80 de Internet a ${h} y el 443 a ${s}, y vuelve a comprobar. En un servidor alquilado (VPS) esto no funciona: libera ahí los puertos 80 y 443, o usa Cloudflare.`,
+          sshKey: "Archivo de clave privada (opcional)",
+          sshKeyHelp: "Vacío: ~/.ssh/id_ed25519, id_ecdsa o id_rsa si hay una.",
+          sshPassphrase: "Frase de contraseña de la clave (opcional)",
+          sudoPassword: "Contraseña sudo (opcional)",
+          sudoHelp: "Vacía: la contraseña SSH.",
+          connect: "Conectar y comprobar",
+          update: "Actualizar el bot",
+          openAdmin: "Abrir la página de administración",
+          adminLink: "Página de administración ↗",
+          settingsTitle: "Ajustes de Discord",
+          token: "Token del bot",
+          guild: "ID de tu servidor de Discord (opcional)",
+          guildHelp:
+            "Clic derecho en tu servidor (modo desarrollador activado) → Copiar ID del servidor: así el bot solo responde a ese servidor.",
+          duckName: "Nombre DuckDNS",
+          duckHelp:
+            "Creado en duckdns.org: «miescuadron» para miescuadron.duckdns.org. Tu router redirige los puertos 80 y 443 (TCP) a la máquina.",
+          duckToken: "Token de DuckDNS",
+          portsHelp:
+            "Algunos proveedores comparten una IP entre clientes (CGNAT): entonces no se pueden redirigir puertos. Muchos dan una IP pública si se pide.",
+          newHelp:
+            "Portal de desarrolladores → tu aplicación: Application ID y Public Key en General Information, el token en Bot → Reset Token.",
+          updateHelp:
+            "El bot ya está: estos campos son opcionales. Vacíos: se quedan como están. El secreto de firma nunca cambia, así que las claves de los miembros siguen valiendo.",
+          missingHelp: (f) =>
+            "El bot está, pero a Cloudflare le falta: " + f + ". Rellénalos; los demás campos son opcionales.",
+          reinstallHelp:
+            "Volver a instalar con nuevos ajustes (todos necesarios): nuevo nombre DuckDNS, nuevo token… Las claves de los miembros siguen valiendo.",
+          install: "Instalar",
+          updateBtn: "Actualizar",
+          reinstall: "Volver a instalar",
+          progress: "Progreso",
+          quit: "Cerrar la instalación",
+          doneEndpoint: "Portal de desarrolladores → General Information → Interactions Endpoint URL:",
+          doneThen: "Luego Installation → el enlace de instalación añade el bot a tu servidor.",
+          failed: "Detenido: mira arriba.",
+          badFields: "Hay que revisar algunos campos.",
+          busy: "Ya hay algo en marcha.",
+          installed: "Hay un bot EDCH en esta máquina.",
+          notReady: "La máquina no está lista: mira lo marcado con ✖.",
+          notInstalled: "Todavía no hay ningún bot EDCH en esta máquina.",
+          closed: "Instalación cerrada: puedes cerrar esta pestaña.",
+          checks: {
+            tools: "Herramientas de instalación (wrangler)",
+            edsm: "EDSM (lista de facciones)",
+            system: "Sistema",
+            packages: "Paquetes",
+            processor: "Procesador",
+            user: "Usuario",
+            caddy: "Caddy (HTTPS)",
+            ports: (v) => `Puertos ${v.http} y ${v.https}`,
+            disk: "Espacio en disco",
+            internet: "Internet",
+          },
+          why: {
+            nodeOld: (v) => `${v.version}: hace falta la versión ${v.need} o superior (nodejs.org)`,
+            npmMissing: "no está: vuelve a instalar Node.js desde nodejs.org (incluye npm)",
+            toolsInstall: "se instalan ahora (npm install)",
+            toolsNoRegistry: "no están, y no se puede acceder al registro de npm desde este PC",
+            unreachable: (v) => `no se puede acceder a ${v.site} (¿cortafuegos, proxy?)`,
+            pkgUnsupported: "solo se admiten sistemas apt (Debian, Ubuntu, Raspberry Pi OS…) y dnf (Fedora…)",
+            archUnsupported: (v) => `${v.arch}: Node.js 22 necesita un procesador de 64 bits (x86_64 o arm64)`,
+            noSystemd: "el bot funciona como servicio systemd: este sistema no lo tiene",
+            rootUser: "inicia sesión con un usuario normal con permisos sudo, no como root",
+            sudoDenied: "este usuario no puede usar sudo, o la contraseña sudo es incorrecta",
+            sudoMissing: "sudo no está instalado",
+            nodeInstall: (v) => `${v.version || "no está"}: se instalará Node.js 22 (versión oficial)`,
+            willInstall: "se instalará",
+            portsFree: "libres",
+            portsCaddy: "usados por Caddy",
+            portsTaken: (v) => `${v.taken} ya en uso por otro programa (¿un servidor web?)`,
+            portsTakenSuggest: (v) =>
+              `${v.taken} ya en uso por otro programa (¿un servidor web?): elige otros puertos, ${v.suggestHttp} y ${v.suggestHttps} están libres`,
+            diskFree: (v) => `${v.amount} libres`,
+            diskLow: (v) =>
+              `${v.mb} MB libres: hacen falta unos ${v.need} MB (Node.js, Caddy y el bot ocupan unos 250 MB, el resto es para las actualizaciones)`,
+            offline: (v) => `la máquina no llega a ${v.sites}`,
+            internetLater: "se comprueba cuando curl esté instalado",
+          },
+        },
+        pt: {
+          intro:
+            "Esta página roda só no seu PC. Senhas e segredos vão para a Cloudflare ou para a sua máquina, para nenhum outro lugar, e não ficam guardados aqui.",
+          whereTitle: "Onde o bot roda",
+          cloudflareHelp: "Worker da Cloudflare gratuito: nada para deixar ligado.",
+          machineName: "Sua máquina Linux",
+          machineHelp:
+            "Uma máquina Linux acessada por SSH (Raspberry Pi, servidor em casa). O endereço vem do DuckDNS, com HTTPS.",
+          cfAccountHelp:
+            "Entre na conta da Cloudflare onde o bot roda (ou vai rodar): uma aba da Cloudflare se abre. Se o bot já estiver lá, ele é atualizado.",
+          cfAccount: "Entrar e verificar",
+          machineTitle: "A máquina Linux",
+          sshHelp:
+            "O endereço da máquina e uma conta com permissão sudo. Uma chave SSH de ~/.ssh é usada quando existe.",
+          sshHost: "Endereço",
+          sshPort: "Porta SSH",
+          sshUser: "Usuário",
+          sshPassword: "Senha",
+          sshPasswordHelp: "Deixe vazio quando uma chave SSH abre a máquina.",
+          moreSsh: "Chave SSH, senha sudo, portas",
+          httpPort: "Porta HTTP na máquina",
+          httpsPort: "Porta HTTPS na máquina",
+          portsChoiceHelp:
+            "80 e 443, a menos que outro programa as use. Pela Internet é sempre 80 e 443: em casa, o roteador as redireciona para essas portas; um servidor alugado (VPS) precisa de 80 e 443 livres.",
+          portsSuggested: (h, s) =>
+            `As portas 80 e 443 estão ocupadas na máquina: o bot pode usar ${h} e ${s} no lugar (preenchidas acima). No seu roteador, redirecione a porta 80 da Internet para ${h} e a 443 para ${s}, depois verifique de novo. Num servidor alugado (VPS) isso não funciona: libere lá as portas 80 e 443, ou use a Cloudflare.`,
+          sshKey: "Arquivo de chave privada (opcional)",
+          sshKeyHelp: "Vazio: ~/.ssh/id_ed25519, id_ecdsa ou id_rsa quando existe.",
+          sshPassphrase: "Senha da chave (opcional)",
+          sudoPassword: "Senha sudo (opcional)",
+          sudoHelp: "Vazio: a senha SSH.",
+          connect: "Conectar e verificar",
+          update: "Atualizar o bot",
+          openAdmin: "Abrir a página de administração",
+          adminLink: "Página de administração ↗",
+          settingsTitle: "Configurações do Discord",
+          token: "Token do bot",
+          guild: "ID do seu servidor do Discord (opcional)",
+          guildHelp:
+            "Clique com o botão direito no seu servidor (modo desenvolvedor ativado) → Copiar ID do servidor: assim o bot só responde a esse servidor.",
+          duckName: "Nome DuckDNS",
+          duckHelp:
+            "Criado em duckdns.org: “meuesquadrao” para meuesquadrao.duckdns.org. Seu roteador redireciona as portas 80 e 443 (TCP) para a máquina.",
+          duckToken: "Token do DuckDNS",
+          portsHelp:
+            "Alguns provedores compartilham um IP entre clientes (CGNAT): aí não dá para redirecionar portas. Muitos dão um IP público se você pedir.",
+          newHelp:
+            "Portal do desenvolvedor → seu aplicativo: Application ID e Public Key em General Information, o token em Bot → Reset Token.",
+          updateHelp:
+            "O bot já está lá: estes campos são opcionais. Vazios: ficam como estão. O segredo de assinatura nunca muda, então as chaves dos membros continuam valendo.",
+          missingHelp: (f) =>
+            "O bot está lá, mas falta na Cloudflare: " + f + ". Preencha esses; os outros campos são opcionais.",
+          reinstallHelp:
+            "Instalar de novo com novas configurações (todas necessárias): novo nome DuckDNS, novo token… As chaves dos membros continuam valendo.",
+          install: "Instalar",
+          updateBtn: "Atualizar",
+          reinstall: "Instalar de novo",
+          progress: "Andamento",
+          quit: "Fechar a instalação",
+          doneEndpoint: "Portal do desenvolvedor → General Information → Interactions Endpoint URL:",
+          doneThen: "Depois Installation → o link de instalação adiciona o bot ao seu servidor.",
+          failed: "Parado: veja acima.",
+          badFields: "Alguns campos precisam ser revistos.",
+          busy: "Já tem algo em andamento.",
+          installed: "Há um bot EDCH nesta máquina.",
+          notReady: "A máquina não está pronta: veja o que está marcado com ✖.",
+          notInstalled: "Ainda não há bot EDCH nesta máquina.",
+          closed: "Instalação fechada: você pode fechar esta aba.",
+          checks: {
+            tools: "Ferramentas de instalação (wrangler)",
+            edsm: "EDSM (lista de facções)",
+            system: "Sistema",
+            packages: "Pacotes",
+            processor: "Processador",
+            user: "Usuário",
+            caddy: "Caddy (HTTPS)",
+            ports: (v) => `Portas ${v.http} e ${v.https}`,
+            disk: "Espaço em disco",
+            internet: "Internet",
+          },
+          why: {
+            nodeOld: (v) => `${v.version}: é preciso a versão ${v.need} ou mais nova (nodejs.org)`,
+            npmMissing: "ausente: instale o Node.js de novo pelo nodejs.org (o npm vem junto)",
+            toolsInstall: "instaladas agora (npm install)",
+            toolsNoRegistry: "ausentes, e o registro do npm não é acessível deste PC",
+            unreachable: (v) => `${v.site} não é acessível (firewall, proxy?)`,
+            pkgUnsupported: "só sistemas apt (Debian, Ubuntu, Raspberry Pi OS…) e dnf (Fedora…) são suportados",
+            archUnsupported: (v) => `${v.arch}: o Node.js 22 precisa de um processador de 64 bits (x86_64 ou arm64)`,
+            noSystemd: "o bot roda como serviço systemd: este sistema não tem",
+            rootUser: "entre com um usuário normal com permissão sudo, não como root",
+            sudoDenied: "este usuário não pode usar sudo, ou a senha sudo está errada",
+            sudoMissing: "o sudo não está instalado",
+            nodeInstall: (v) => `${v.version || "ausente"}: o Node.js 22 será instalado (versão oficial)`,
+            willInstall: "será instalado",
+            portsFree: "livres",
+            portsCaddy: "usadas pelo Caddy",
+            portsTaken: (v) => `${v.taken} já em uso por outro programa (um servidor web?)`,
+            portsTakenSuggest: (v) =>
+              `${v.taken} já em uso por outro programa (um servidor web?): escolha outras portas, ${v.suggestHttp} e ${v.suggestHttps} estão livres`,
+            diskFree: (v) => `${v.amount} livres`,
+            diskLow: (v) =>
+              `${v.mb} MB livres: são necessários uns ${v.need} MB (Node.js, Caddy e o bot ocupam uns 250 MB, o resto é para as atualizações)`,
+            offline: (v) => `a máquina não acessa ${v.sites}`,
+            internetLater: "verificado quando o curl estiver instalado",
+          },
+        },
+        ru: {
+          intro:
+            "Эта страница работает только на вашем ПК. Пароли и секреты уходят в Cloudflare или на вашу машину, больше никуда, и здесь не хранятся.",
+          whereTitle: "Где работает бот",
+          cloudflareHelp: "Бесплатный Cloudflare Worker: ничего не нужно держать включённым.",
+          machineName: "Ваша машина с Linux",
+          machineHelp:
+            "Машина с Linux, доступная по SSH (Raspberry Pi, домашний сервер). Её адрес даёт DuckDNS, с HTTPS.",
+          cfAccountHelp:
+            "Войдите в аккаунт Cloudflare, где работает (или будет работать) бот: откроется вкладка Cloudflare. Если бот уже там, он обновится.",
+          cfAccount: "Войти и проверить",
+          machineTitle: "Машина с Linux",
+          sshHelp: "Адрес машины и учётная запись с правами sudo. Если в ~/.ssh есть ключ SSH, используется он.",
+          sshHost: "Адрес",
+          sshPort: "Порт SSH",
+          sshUser: "Пользователь",
+          sshPassword: "Пароль",
+          sshPasswordHelp: "Оставьте пустым, если машину открывает ключ SSH.",
+          moreSsh: "Ключ SSH, пароль sudo, порты",
+          httpPort: "Порт HTTP на машине",
+          httpsPort: "Порт HTTPS на машине",
+          portsChoiceHelp:
+            "80 и 443, если их не занимает другая программа. Из Интернета это всегда 80 и 443: дома роутер перенаправляет их на эти порты; арендованному серверу (VPS) нужны свободные 80 и 443.",
+          portsSuggested: (h, s) =>
+            `Порты 80 и 443 на машине заняты: бот может использовать ${h} и ${s} вместо них (заполнено выше). На роутере перенаправьте порт 80 из Интернета на ${h}, а 443 на ${s}, затем проверьте снова. На арендованном сервере (VPS) так не получится: освободите там порты 80 и 443 или используйте Cloudflare.`,
+          sshKey: "Файл закрытого ключа (необязательно)",
+          sshKeyHelp: "Пусто: ~/.ssh/id_ed25519, id_ecdsa или id_rsa, если есть.",
+          sshPassphrase: "Парольная фраза ключа (необязательно)",
+          sudoPassword: "Пароль sudo (необязательно)",
+          sudoHelp: "Пусто: пароль SSH.",
+          connect: "Подключиться и проверить",
+          update: "Обновить бота",
+          openAdmin: "Открыть страницу администрирования",
+          adminLink: "Страница администрирования ↗",
+          settingsTitle: "Настройки Discord",
+          token: "Токен бота",
+          guild: "ID вашего сервера Discord (необязательно)",
+          guildHelp:
+            "Правый клик по серверу (режим разработчика включён) → Копировать ID сервера: тогда бот отвечает только этому серверу.",
+          duckName: "Имя DuckDNS",
+          duckHelp:
+            "Создаётся на duckdns.org: «moyaeskadrilya» для moyaeskadrilya.duckdns.org. Роутер перенаправляет порты 80 и 443 (TCP) на машину.",
+          duckToken: "Токен DuckDNS",
+          portsHelp:
+            "Некоторые провайдеры дают один IP нескольким клиентам (CGNAT): тогда перенаправить порты нельзя. Многие выдают публичный IP по запросу.",
+          newHelp:
+            "Портал разработчика → ваше приложение: Application ID и Public Key в General Information, токен в Bot → Reset Token.",
+          updateHelp:
+            "Бот уже есть: эти поля необязательны. Пустые остаются как есть. Секрет подписи никогда не меняется, ключи участников остаются действительными.",
+          missingHelp: (f) =>
+            "Бот есть, но в Cloudflare не хватает: " + f + ". Заполните их; остальные поля необязательны.",
+          reinstallHelp:
+            "Установить заново с новыми настройками (нужны все): новое имя DuckDNS, новый токен… Ключи участников остаются действительными.",
+          install: "Установить",
+          updateBtn: "Обновить",
+          reinstall: "Установить заново",
+          progress: "Ход работы",
+          quit: "Закрыть установку",
+          doneEndpoint: "Портал разработчика → General Information → Interactions Endpoint URL:",
+          doneThen: "Затем Installation → ссылка установки добавит бота на ваш сервер.",
+          failed: "Остановлено: см. выше.",
+          badFields: "Некоторые поля нужно проверить.",
+          busy: "Что-то уже выполняется.",
+          installed: "На этой машине есть бот EDCH.",
+          notReady: "Машина не готова: см. пункты, отмеченные ✖.",
+          notInstalled: "На этой машине пока нет бота EDCH.",
+          closed: "Установка закрыта: эту вкладку можно закрыть.",
+          checks: {
+            tools: "Инструменты установки (wrangler)",
+            edsm: "EDSM (список фракций)",
+            system: "Система",
+            packages: "Пакеты",
+            processor: "Процессор",
+            user: "Пользователь",
+            caddy: "Caddy (HTTPS)",
+            ports: (v) => `Порты ${v.http} и ${v.https}`,
+            disk: "Место на диске",
+            internet: "Интернет",
+          },
+          why: {
+            nodeOld: (v) => `${v.version}: нужна версия ${v.need} или новее (nodejs.org)`,
+            npmMissing: "отсутствует: переустановите Node.js с nodejs.org (npm входит в комплект)",
+            toolsInstall: "устанавливаются сейчас (npm install)",
+            toolsNoRegistry: "отсутствуют, а реестр npm недоступен с этого ПК",
+            unreachable: (v) => `${v.site} недоступен (брандмауэр, прокси?)`,
+            pkgUnsupported: "поддерживаются только системы с apt (Debian, Ubuntu, Raspberry Pi OS…) и dnf (Fedora…)",
+            archUnsupported: (v) => `${v.arch}: Node.js 22 нужен 64-битный процессор (x86_64 или arm64)`,
+            noSystemd: "бот работает как служба systemd: в этой системе её нет",
+            rootUser: "войдите обычным пользователем с правами sudo, не root",
+            sudoDenied: "этот пользователь не может использовать sudo, или пароль sudo неверен",
+            sudoMissing: "sudo не установлен",
+            nodeInstall: (v) => `${v.version || "отсутствует"}: будет установлен Node.js 22 (официальная сборка)`,
+            willInstall: "будет установлен",
+            portsFree: "свободны",
+            portsCaddy: "заняты Caddy",
+            portsTaken: (v) => `${v.taken} уже заняты другой программой (веб-сервер?)`,
+            portsTakenSuggest: (v) =>
+              `${v.taken} уже заняты другой программой (веб-сервер?): выберите другие порты, ${v.suggestHttp} и ${v.suggestHttps} свободны`,
+            diskFree: (v) => `свободно ${v.amount}`,
+            diskLow: (v) =>
+              `свободно ${v.mb} МБ: нужно около ${v.need} МБ (Node.js, Caddy и бот занимают около 250 МБ, остальное для обновлений)`,
+            offline: (v) => `машина не может связаться с ${v.sites}`,
+            internetLater: "будет проверено после установки curl",
+          },
         },
       };
       const $ = (id) => document.getElementById(id);
@@ -477,10 +981,14 @@
         "HTTP_PORT",
         "HTTPS_PORT",
       ];
-      let lang = (navigator.language || "en").startsWith("fr") ? "fr" : "en";
+      // The browser's language when EDCH has it, else English; the last choice is remembered.
+      let lang = (navigator.language || "en").slice(0, 2);
       try {
         lang = localStorage.getItem("edch.setup.lang") || lang;
       } catch {}
+      if (!TEXT[lang]) lang = "en";
+      /** The last check list, drawn again when the language changes. */
+      let lastChecks = null;
       /** What the last check found: Cloudflare {exists, missing} or the machine {installed}. */
       let found = null;
       let installAction = "";
@@ -501,7 +1009,9 @@
           localStorage.setItem("edch.setup.lang", l);
         } catch {}
         for (const el of document.querySelectorAll("[data-t]")) el.textContent = TEXT[l][el.dataset.t];
+        for (const b of document.querySelectorAll("[data-lang]")) b.classList.toggle("on", b.dataset.lang === l);
         showSettings();
+        if (lastChecks) renderChecks(lastChecks);
       }
 
       function showMode() {
@@ -513,6 +1023,7 @@
         $("cfAccountInfo").textContent = $("machineInfo").textContent = "";
         $("cfChecks").replaceChildren();
         $("machineChecks").replaceChildren();
+        lastChecks = null;
         showSettings();
       }
 
@@ -593,6 +1104,11 @@
 
       /** The list of what was checked: ✔ there, ⬇ installed by the setup, ✖ blocks (with why). */
       function renderChecks(list) {
+        lastChecks = list;
+        const t = TEXT[lang];
+        /** A text of this language (a string, or a function of the check's values), else the English sent. */
+        const say = (text, vars, fallback) =>
+          typeof text === "function" ? text(vars || {}) : typeof text === "string" ? text : fallback;
         const target = mode() === "cloudflare" ? $("cfChecks") : $("machineChecks");
         target.replaceChildren(
           ...list.map((c) => {
@@ -602,8 +1118,9 @@
             icon.className = "i";
             icon.textContent = c.status === "ok" ? "✔" : c.status === "install" ? "⬇" : "✖";
             const name = document.createElement("b");
-            name.textContent = c.name;
-            li.append(icon, name, c.detail ? " — " + c.detail : "");
+            name.textContent = say(t.checks[c.key], c.vars, c.name);
+            const detail = c.code === "raw" ? (c.vars || {}).text : say(t.why[c.code], c.vars, c.detail);
+            li.append(icon, name, detail ? " — " + detail : "");
             return li;
           }),
         );
