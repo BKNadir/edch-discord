@@ -58,8 +58,9 @@ Commands leave nothing in the channel: every answer is seen by the member only.
 EDCH asks the bot which factions the server follows and sends a report for each one its commander
 worked for. With several factions, the thread lines name the faction.
 
-While an admin types a faction to add, the bot asks [EliteBGS](https://elitebgs.app) for the
-game's factions starting with it (only the typed text is sent, nothing about the server or the
+While an admin types a faction to add, the bot offers the factions the members saw in their
+systems over the last 7 days (the server's own data, always there), and asks
+[EliteBGS](https://elitebgs.app) for the game's factions starting with it (only the typed text is sent, nothing about the server or the
 member); if EliteBGS doesn't answer in time, only the typed text is offered. The factions already
 followed are offered in `remove`, `default` and `summary`.
 

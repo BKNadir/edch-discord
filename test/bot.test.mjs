@@ -693,3 +693,68 @@ test("#edch-bgs is read-only for the role, also after setting up again; the key 
   await bgs(discord, GUILD_A, PILOT, [role.id], "link", {});
   assert.match(discord.dms.at(-1).content, new RegExp(`Mute <#${reading().id}>`));
 });
+
+test("adding a faction offers those the members saw in their systems, even without EliteBGS", async () => {
+  const { discord } = await twoServers();
+  const key = await linkKey(discord, GUILD_A, PILOT, [ROLE_A]);
+  const now = () => NOW;
+  const ally = {
+    ...seen("Home", 40, "2026-11-13T18:00:00Z"),
+    factions: [
+      { name: "Faction A", influence: 40, state: "None", active: [], pending: [], recovering: [] },
+      {
+        name: "Amicale des Compagnons de l'Espace",
+        influence: 35,
+        state: "None",
+        active: [],
+        pending: [],
+        recovering: [],
+      },
+      { name: "Bad Neighbours", influence: 25, state: "None", active: [], pending: [], recovering: [] },
+    ],
+  };
+  await handleApi(
+    "POST",
+    "/v1/report",
+    `Bearer ${key}`,
+    JSON.stringify({ ...report("Faction A", []), systems: [ally] }),
+    env(),
+    discord.api,
+    undefined,
+    now,
+  );
+  const typing = (value) =>
+    handleInteraction(
+      {
+        type: 4,
+        token: "typing",
+        application_id: BOT_ID,
+        guild_id: GUILD_A,
+        member: { user: { id: ADMIN }, roles: [], permissions: "8" },
+        data: {
+          name: "bgs",
+          options: [
+            {
+              type: 2,
+              name: "faction",
+              options: [{ type: 1, name: "add", options: [{ name: "name", value, focused: true }] }],
+            },
+          ],
+        },
+      },
+      // EliteBGS down: it answers nothing.
+      {
+        env: env(),
+        api: discord.api,
+        botUrl: BOT_URL,
+        now: NOW,
+        tick: async () => null,
+        searchFactions: async () => [],
+      },
+    );
+  const offered = (await typing("ami")).response.data.choices.map((c) => c.value);
+  assert.deepEqual(offered, ["ami", "Amicale des Compagnons de l'Espace"]);
+  // Already followed: not offered again.
+  const all = (await typing("")).response.data.choices.map((c) => c.value);
+  assert.deepEqual(all, ["Amicale des Compagnons de l'Espace", "Bad Neighbours"]);
+});

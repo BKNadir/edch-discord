@@ -30,6 +30,7 @@ import {
   MAX_FACTIONS,
   readActions,
   readConfig,
+  readData,
   ROLE_NAME,
   SYNC_CHANNEL,
   syncOverwrites,
@@ -66,8 +67,18 @@ export const MAX_FACTION_NAME = 100;
 export const TICK_URL = "https://tick.edcd.io/api/tick";
 /** EliteBGS (public BGS data): the game's factions whose name starts with what an admin types. */
 export const FACTION_SEARCH_URL = "https://elitebgs.app/api/ebgs/v5/factions";
-/** Discord waits 3 seconds for the choices: the search gets half of it. */
-const SEARCH_TIMEOUT_MS = 1500;
+/** Discord waits 3 seconds for the choices: each source gets two of them, at the same time. */
+const SEARCH_TIMEOUT_MS = 2000;
+/** The factions members saw this many days back are offered when adding one. */
+const SEEN_DAYS = 7;
+
+/** `work`'s result, or `fallback` when it fails or takes longer than SEARCH_TIMEOUT_MS. */
+function withinTime<T>(work: Promise<T>, fallback: T): Promise<T> {
+  return Promise.race([
+    work.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), SEARCH_TIMEOUT_MS)),
+  ]);
+}
 
 /** The game's factions starting with `typed` (EliteBGS), or [] when it doesn't answer in time. */
 export async function searchGameFactions(typed: string): Promise<string[]> {
@@ -219,8 +230,20 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
     return found ? { channelId, ...found } : NOT_SET_UP;
   };
 
+  /** The factions members saw in their systems over the last days, those already followed left out. */
+  const seenFactions = async (): Promise<string[]> => {
+    const loaded = await load();
+    if (typeof loaded === "string") return [];
+    const since = new Date(ctx.now - SEEN_DAYS * 86_400_000).toISOString();
+    const { snapshots } = await readData(ctx.api, loaded.channelId, botId, since);
+    const names = new Set<string>();
+    for (const snapshot of snapshots) for (const faction of snapshot.factions) names.add(faction.name);
+    return [...names].filter((name) => !loaded.config.factions.some((f) => sameFaction(f, name))).sort();
+  };
+
   // Typing a faction's name (Discord shows at most 25 choices):
-  // - /bgs faction add: the game's factions starting with it (EliteBGS), what was typed first;
+  // - /bgs faction add: what was typed first, the factions members saw in their systems, then the
+  //   game's factions starting with it (EliteBGS);
   // - elsewhere: those the server follows that contain it.
   if (interaction.type === AUTOCOMPLETE) {
     const typed = String(options.find((o) => o.focused)?.value ?? "")
@@ -228,8 +251,21 @@ export async function handleInteraction(interaction: Interaction, ctx: Context):
       .slice(0, MAX_FACTION_NAME);
     let names: string[] = [];
     if (path === "faction add" || path === "setup") {
-      const found = admin && ctx.searchFactions ? await ctx.searchFactions(typed) : [];
-      names = [...(typed ? [typed] : []), ...found.filter((f) => !sameFaction(f, typed))];
+      // Both at once, each within the time Discord gives: the factions the members saw in their
+      // systems (this server's own data, always there) and the game's (EliteBGS, when it answers).
+      const [seen, found] = admin
+        ? await Promise.all([
+            withinTime(seenFactions(), [] as string[]),
+            ctx.searchFactions ? ctx.searchFactions(typed) : Promise.resolve([] as string[]),
+          ])
+        : [[], []];
+      const lower = typed.toLowerCase();
+      const matching = seen
+        .filter((f) => f.toLowerCase().includes(lower))
+        .sort((a, b) => Number(!a.toLowerCase().startsWith(lower)) - Number(!b.toLowerCase().startsWith(lower)));
+      names = [...(typed ? [typed] : []), ...matching, ...found].filter(
+        (f, i, all) => all.findIndex((o) => sameFaction(o, f)) === i,
+      );
     } else {
       try {
         const loaded = await load();
