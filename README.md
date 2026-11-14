@@ -5,7 +5,8 @@ squadron's members send what they did for their minor factions (their own and al
 bounties, combat bonds, trade, cartography, and what counted against it), and `/bgs summary` shows
 the squadron's work system by system.
 
-It runs as a Cloudflare Worker that answers Discord's interactions: nothing to keep running.
+Each squadron hosts its own copy (below): a Cloudflare Worker that answers Discord's
+interactions, on Cloudflare's free plan, with nothing to keep running.
 
 ## Where the data is
 
@@ -38,8 +39,8 @@ Systems without a followed faction are dropped.
 No commander names: a report is tied to the member's Discord account. EDCH sends nothing unless
 the member pastes their key and ticks the box.
 
-The shared bot's token can reach these channels on every server it was added to. A squadron that
-doesn't want to depend on anyone can run its own copy (below).
+A squadron's copy answers its own server only (`DISCORD_GUILD_ID`): its token reaches no other
+squadron's data, and no one else's bot reaches yours.
 
 ## Commands
 
@@ -71,24 +72,10 @@ followed are offered in `remove`, `default` and `summary`.
 them to anyone without the Administrator or Manage Server right. Removing the role stops a member's reports at once; their past
 reports still count.
 
-## For a squadron (shared bot)
+## Hosting your squadron's bot
 
-1. An admin adds the bot with the link given in EDCH (Sync → Connect to the Discord bot) or by its
-   host.
-2. `/bgs setup`: the bot creates the **`BGS`** role, **`#edch-sync`** and **`#edch-bgs`** when
-   they're missing, and pins its settings. Then `/bgs faction add` for your faction, and again for
-   allied ones (or `faction:"Your faction"` in `setup`). Options:
-   `role:@YourRole` for another role, `link_channel:#channel` to allow `/bgs link` there only.
-   Without the Manage Roles and Manage Channels rights, create them yourself (private; in
-   `#edch-sync` the bot sees, reads the history, sends, manages and pins; in `#edch-bgs` it also
-   creates threads and writes in them) and give `role`.
-3. Give the role to the members who report.
-4. Each member: `/bgs link`, then in EDCH, Sync → Connect to the Discord bot, paste the key from
-   the direct message and tick "Send BGS reports".
-
-## Hosting it (the shared bot, or a squadron's own copy)
-
-You need a Discord account and a Cloudflare account (the free plan is enough).
+You need a Discord account, a Cloudflare account (the free plan is enough) and Node.js. About
+twenty minutes, once.
 
 1. **Discord**: [developer portal](https://discord.com/developers/applications) → New Application
    "EDCH". Note the **Application ID** and the **Public Key** (General Information). Bot →
@@ -97,28 +84,40 @@ You need a Discord account and a Cloudflare account (the free plan is enough).
    `applications.commands`; permissions Manage Roles, Manage Channels, View Channels, Send
    Messages, Manage Messages, Pin Messages, Read Message History, Create Public Threads, Send
    Messages in Threads. Bot: no privileged intent is needed.
-2. **Cloudflare**: `npm install`, then `npx wrangler login`.
-3. In `wrangler.toml`: `DISCORD_APPLICATION_ID`, and for your own copy `DISCORD_GUILD_ID` (your
-   server's id: the bot then refuses every other server).
-4. Secrets:
+2. **The code**: clone this repository, then `npm install` and `npx wrangler login` (Cloudflare).
+3. In `wrangler.toml`: `DISCORD_APPLICATION_ID`, and `DISCORD_GUILD_ID` (your server's id, right-click
+   on the server with Discord's developer mode on: the bot then refuses every other server).
+4. Secrets (asked for one by one, never written in a file):
    ```
    npx wrangler secret put DISCORD_PUBLIC_KEY
    npx wrangler secret put DISCORD_BOT_TOKEN
    npx wrangler secret put LINK_SECRET        # any long random text; changing it cancels every key
    ```
-5. `npm run deploy` (builds the faction list, then deploys): note the address
-   (`https://edch-discord.<you>.workers.dev`).
+5. `npm run update`: builds the list of the game's factions (EDSM's nightly dump, about a minute),
+   deploys, and wakes the bot up. Note its address (`https://edch-discord.<you>.workers.dev`).
 6. Developer portal → General Information → **Interactions Endpoint URL**:
    `https://edch-discord.<you>.workers.dev/interactions` (Discord checks it right away).
-7. Add the bot to your server with the developer portal's Installation link. The bot declares
-   `/bgs` itself (with its own token, the secret above) at its first request after each deploy,
-   and only when it changed.
+7. Developer portal → Installation: open the install link and add the bot to your server (it needs
+   the Manage Server right there). The bot declares `/bgs` itself, with its own token (the secret
+   above), at its first request after each deploy, and only when it changed.
 
-After a change to the bot: `npm run update` (builds the faction list, deploys, and wakes the bot
-up so it declares `/bgs`; nothing to type).
+After a change to the bot: `git pull`, then `npm run update` (nothing to type).
 
-EDCH knows the shared bot's address. For your own copy, the key `/bgs link` gives contains your
-address: EDCH asks you to confirm it the first time.
+The key `/bgs link` gives contains your bot's address: EDCH asks each member to confirm it the
+first time.
+
+## Setting it up on your server
+
+1. `/bgs setup`: the bot creates the **`BGS`** role, **`#edch-sync`** and **`#edch-bgs`** when
+   they're missing, and pins its settings. Then `/bgs faction add` for your faction, and again for
+   allied ones (or `faction:"Your faction"` in `setup`). Options:
+   `role:@YourRole` for another role, `link_channel:#channel` to allow `/bgs link` there only.
+   Without the Manage Roles and Manage Channels rights, create them yourself (private; in
+   `#edch-sync` the bot sees, reads the history, sends, manages and pins; in `#edch-bgs` it also
+   creates posts or threads and writes in them) and give `role`.
+2. Give the role to the members who report.
+3. Each member: `/bgs link`, then in EDCH, Sync → Connect to the Discord bot, paste the key from
+   the direct message and tick "Send BGS reports". The message also says to mute `#edch-bgs`.
 
 ## Development
 
