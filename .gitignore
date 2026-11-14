@@ -3,3 +3,8 @@ dist-test/
 .wrangler/
 .dev.vars
 src/generated/
+dist-node/
+bot.env
+.edch-install
+duckdns.env
+.update-state.json

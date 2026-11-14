@@ -840,3 +840,25 @@ test("setting up again on an older server: the forum is made, the old text chann
   assert.equal(config.bgsForum, true);
   assert.notEqual(config.bgsChannelId, oldId);
 });
+
+test("the handler (Cloudflare or Node): home page, unsigned interactions refused, the public address in keys", async () => {
+  const { createHandler } = await import("../dist-test/handler.js");
+  const handle = createHandler(() => "", "https://mybot.duckdns.org");
+  const background = { waitUntil: (p) => void p.catch(() => undefined) };
+  const environment = {
+    ...env(),
+    DISCORD_APPLICATION_ID: "",
+    DISCORD_PUBLIC_KEY: "00".repeat(32),
+    DISCORD_BOT_TOKEN: "x",
+  };
+  const home = await handle(new Request("http://127.0.0.1:8787/"), environment, background);
+  assert.equal(home.status, 200);
+  const unsigned = await handle(
+    new Request("http://127.0.0.1:8787/interactions", { method: "POST", body: '{"type":1}' }),
+    environment,
+    background,
+  );
+  assert.equal(unsigned.status, 401);
+  const noKey = await handle(new Request("http://127.0.0.1:8787/v1/config"), environment, background);
+  assert.equal(noKey.status, 401);
+});

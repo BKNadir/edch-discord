@@ -5,8 +5,8 @@ squadron's members send what they did for their minor factions (their own and al
 bounties, combat bonds, trade, cartography, and what counted against it), and `/bgs summary` shows
 the squadron's work system by system.
 
-Each squadron hosts its own copy (below): a Cloudflare Worker that answers Discord's
-interactions, on Cloudflare's free plan, with nothing to keep running.
+Each squadron hosts its own copy (below): on Cloudflare's free plan (a Worker, nothing to keep
+running) or on a Linux machine of its own, installed from a PC by a script.
 
 ## Where the data is
 
@@ -74,37 +74,87 @@ reports still count.
 
 ## Hosting your squadron's bot
 
-You need a Discord account, a Cloudflare account (the free plan is enough) and Node.js. About
-twenty minutes, once.
+The bot runs either on **Cloudflare** (a free Worker: nothing to keep switched on) or on **a Linux
+machine of yours** (a Raspberry Pi, a home server…), reached from your PC with SSH. Scripts do the
+whole installation from your PC, Windows or Linux; a page opens in your browser for the settings.
+About twenty minutes, once.
 
-1. **Discord**: [developer portal](https://discord.com/developers/applications) → New Application
-   "EDCH". Note the **Application ID** and the **Public Key** (General Information). Bot →
-   Reset Token: note the **token** (keep it secret).
-   Installation → Default Install Settings → Guild Install: scopes `bot` and
-   `applications.commands`; permissions Manage Roles, Manage Channels, View Channels, Send
-   Messages, Manage Messages, Pin Messages, Read Message History, Create Public Threads, Send
-   Messages in Threads. Bot: no privileged intent is needed.
-2. **The code**: clone this repository, then `npm install` and `npx wrangler login` (Cloudflare).
-3. In `wrangler.toml`: `DISCORD_APPLICATION_ID`, and `DISCORD_GUILD_ID` (your server's id, right-click
-   on the server with Discord's developer mode on: the bot then refuses every other server).
-4. Secrets (asked for one by one, never written in a file):
-   ```
-   npx wrangler secret put DISCORD_PUBLIC_KEY
-   npx wrangler secret put DISCORD_BOT_TOKEN
-   npx wrangler secret put LINK_SECRET        # any long random text; changing it cancels every key
-   ```
-5. `npm run update`: builds the list of the game's factions (EDSM's nightly dump, about a minute),
-   deploys, and wakes the bot up. Note its address (`https://edch-discord.<you>.workers.dev`).
-6. Developer portal → General Information → **Interactions Endpoint URL**:
-   `https://edch-discord.<you>.workers.dev/interactions` (Discord checks it right away).
-7. Developer portal → Installation: open the install link and add the bot to your server (it needs
-   the Manage Server right there). The bot declares `/bgs` itself, with its own token (the secret
-   above), at its first request after each deploy, and only when it changed.
+### 1. Discord application
 
-After a change to the bot: `git pull`, then `npm run update` (nothing to type).
+[Developer portal](https://discord.com/developers/applications) → New Application "EDCH". Note the
+**Application ID** and the **Public Key** (General Information). Bot → Reset Token: note the
+**token** (keep it secret). Installation → Default Install Settings → Guild Install: scopes `bot`
+and `applications.commands`; permissions Manage Roles, Manage Channels, View Channels, Send
+Messages, Manage Messages, Pin Messages, Read Message History, Create Public Threads, Send Messages
+in Threads. No privileged intent is needed.
+
+### 2. On your PC
+
+Install [Node.js](https://nodejs.org) 20 or newer and [Git](https://git-scm.com), then:
+
+```
+git clone https://github.com/BKNadir/edch-discord.git
+cd edch-discord
+```
+
+| Your PC | Install                                                               | Update                        | Admin page (Linux machine)   |
+| ------- | --------------------------------------------------------------------- | ----------------------------- | ---------------------------- |
+| Windows | `powershell -ExecutionPolicy Bypass -File deploy\install-windows.ps1` | `…\update-windows.ps1`        | `…\admin-windows.ps1`        |
+| Linux   | `bash deploy/install-linux.sh`                                        | `bash deploy/update-linux.sh` | `bash deploy/admin-linux.sh` |
+
+The install script opens a setup page in your browser (on your PC only, `127.0.0.1`, a one-time
+address): where the bot runs, the Discord ids and secrets, and for a Linux machine its SSH address
+and DuckDNS name. The answers without secrets are kept in `.edch-install` for the update and admin
+scripts; secrets go to Cloudflare or to the machine, nowhere else.
+
+### 3a. On Cloudflare
+
+Needs a free [Cloudflare](https://dash.cloudflare.com/sign-up) account: the script signs you in,
+deploys, and keeps the secrets in Cloudflare. Its address is `https://edch-discord.<you>.workers.dev`.
+
+### 3b. On your Linux machine
+
+Debian, Ubuntu, Raspberry Pi OS, Fedora and their relatives. Before running the script:
+
+- **SSH**: you can log in to the machine from your PC (`ssh user@address`) with a user that has
+  sudo rights. An [SSH key](https://www.ssh.com/academy/ssh/keygen) saves typing the password each
+  time.
+- **DuckDNS**: create a free name on [duckdns.org](https://www.duckdns.org) (`mysquadron` for
+  `mysquadron.duckdns.org`) and note its token. The machine keeps it pointed at your network's IP.
+- **Your router**: forward ports **80** and **443** (TCP) to the machine. Port 80 is used only to
+  get the HTTPS certificate (Let's Encrypt).
+- Some Internet providers share one IP between customers (**CGNAT**): ports can't be forwarded
+  then. Many give a public IP on request.
+
+The script installs on the machine: Node.js 22, the bot in `~/edch-discord` (its settings in
+`bot.env`, readable by that user only), a systemd service `edch-discord` that starts at boot,
+DuckDNS updates every 5 minutes, [Caddy](https://caddyserver.com) for HTTPS in front of the bot,
+and opens ports 80 and 443 in the firewall (ufw or firewalld) when one is active. It ends with the
+bot's address, `https://<name>.duckdns.org`, and checks it answers from the Internet.
+
+**Admin page**: the admin script opens an SSH tunnel and the page in your browser. It shows the
+version and the updates, changes the Discord ids and secrets or the DuckDNS token, and updates the
+bot from GitHub: with a button, or **every night by itself** (on by default). An update that fails
+to build puts the previous version back. The page listens on the machine itself only
+(`127.0.0.1:8788`) and needs its own key: it can't be reached from the Internet.
+
+Logs: `sudo journalctl -u edch-discord` (the bot), `sudo journalctl -u caddy` (HTTPS).
+
+### 4. Then, in the developer portal
+
+General Information → **Interactions Endpoint URL**: the bot's address followed by `/interactions`
+(Discord checks it right away). Installation: open the install link and add the bot to your server
+(it needs the Manage Server right there). The bot declares `/bgs` itself, with its own token, at its
+first request after each deploy or restart, and only when it changed.
 
 The key `/bgs link` gives contains your bot's address: EDCH asks each member to confirm it the
 first time.
+
+### By hand (Cloudflare)
+
+`npm install`, `npx wrangler login`, `DISCORD_APPLICATION_ID` and `DISCORD_GUILD_ID` in
+`wrangler.toml`, then `npx wrangler secret put` for `DISCORD_PUBLIC_KEY`, `DISCORD_BOT_TOKEN` and
+`LINK_SECRET` (any long random text; changing it cancels every key), and `npm run update`.
 
 ## Setting it up on your server
 
@@ -122,9 +172,14 @@ first time.
 ## Development
 
 ```
-npm test     # compiles to dist-test/ and runs the tests (no Discord, no Cloudflare)
-npm run dev  # wrangler dev
+npm test            # compiles to dist-test/ and runs the tests (no Discord, no Cloudflare)
+npm run dev         # wrangler dev
+npm run build:node  # the Node build (dist-node/) that scripts/server.mjs runs on a Linux machine
 ```
+
+The request handler (`src/handler.ts`) is the same on Cloudflare (`src/index.ts`) and on a machine
+(`scripts/server.mjs`, with the admin page in `scripts/admin.mjs`). The install and update scripts
+are in `deploy/`.
 
 The report format is EDCH's `docs/BGS_SYNC.md`.
 
