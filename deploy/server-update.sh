@@ -13,9 +13,7 @@ cd "$APP_DIR"
 say "New code"
 git pull --ff-only -q
 say "Building"
-npm install --no-audit --no-fund --loglevel=error
-node scripts/build-factions.mjs
-npm run -s build:node
+bash deploy/server-build.sh
 say "Restarting"
 sudo systemctl restart edch-discord
 sleep 3

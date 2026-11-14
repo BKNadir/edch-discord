@@ -8,3 +8,5 @@ bot.env
 .edch-install
 duckdns.env
 .update-state.json
+admin-credentials.json
+.tools/

@@ -263,7 +263,18 @@
           <label for="SUDO_PASSWORD" data-t="sudoPassword"></label
           ><input id="SUDO_PASSWORD" type="password" autocomplete="off" />
           <div class="sub" data-t="sudoHelp"></div>
+          <div class="grid">
+            <div>
+              <label for="HTTP_PORT" data-t="httpPort"></label><input id="HTTP_PORT" value="80" inputmode="numeric" />
+            </div>
+            <div>
+              <label for="HTTPS_PORT" data-t="httpsPort"></label
+              ><input id="HTTPS_PORT" value="443" inputmode="numeric" />
+            </div>
+          </div>
+          <div class="sub" data-t="portsChoiceHelp"></div>
         </details>
+        <p class="sub" id="portsNote" hidden></p>
         <div class="row"><button id="connect" data-t="connect"></button><span id="machineInfo"></span></div>
         <ul class="checks" id="machineChecks"></ul>
         <div id="machineActions" class="row" hidden>
@@ -328,7 +339,13 @@
           sshUser: "User",
           sshPassword: "Password",
           sshPasswordHelp: "Leave it empty when an SSH key opens the machine.",
-          moreSsh: "SSH key, sudo password",
+          moreSsh: "SSH key, sudo password, ports",
+          httpPort: "HTTP port on the machine",
+          httpsPort: "HTTPS port on the machine",
+          portsChoiceHelp:
+            "80 and 443 unless they are taken by another program. From the Internet it's always 80 and 443: at home, the router forwards them to these ports; a rented server (VPS) needs 80 and 443 free.",
+          portsSuggested: (h, s) =>
+            `Ports 80 and 443 are taken on the machine: the bot can use ${h} and ${s} instead (filled in above). On your router, forward the Internet's port 80 to ${h} and 443 to ${s}, then check again. On a rented server (VPS) this doesn't work: free ports 80 and 443 there, or use Cloudflare.`,
           sshKey: "Private key file (optional)",
           sshKeyHelp: "Empty: ~/.ssh/id_ed25519, id_ecdsa or id_rsa when there is one.",
           sshPassphrase: "Key passphrase (optional)",
@@ -391,7 +408,13 @@
           sshUser: "Utilisateur",
           sshPassword: "Mot de passe",
           sshPasswordHelp: "Laisse vide si une clé SSH ouvre la machine.",
-          moreSsh: "Clé SSH, mot de passe sudo",
+          moreSsh: "Clé SSH, mot de passe sudo, ports",
+          httpPort: "Port HTTP sur la machine",
+          httpsPort: "Port HTTPS sur la machine",
+          portsChoiceHelp:
+            "80 et 443, sauf s'ils sont pris par un autre programme. Depuis Internet, c'est toujours 80 et 443 : à la maison, la box les redirige vers ces ports ; un serveur loué (VPS) doit avoir 80 et 443 libres.",
+          portsSuggested: (h, s) =>
+            `Les ports 80 et 443 sont pris sur la machine : le bot peut utiliser ${h} et ${s} à la place (remplis ci-dessus). Sur ta box, redirige le port 80 d'Internet vers ${h} et le 443 vers ${s}, puis vérifie à nouveau. Sur un serveur loué (VPS), ça ne marche pas : libère les ports 80 et 443, ou utilise Cloudflare.`,
           sshKey: "Fichier de clé privée (facultatif)",
           sshKeyHelp: "Vide : ~/.ssh/id_ed25519, id_ecdsa ou id_rsa s'il y en a une.",
           sshPassphrase: "Phrase de passe de la clé (facultatif)",
@@ -451,6 +474,8 @@
         "DISCORD_GUILD_ID",
         "DUCKDNS_DOMAIN",
         "DUCKDNS_TOKEN",
+        "HTTP_PORT",
+        "HTTPS_PORT",
       ];
       let lang = (navigator.language || "en").startsWith("fr") ? "fr" : "en";
       try {
@@ -604,6 +629,14 @@
         });
       $("connect").onclick = () =>
         start("/api/machine/check", values(), (r) => {
+          // Ports taken: other free ones filled in, with what to do on the router.
+          $("portsNote").hidden = !r.suggestPorts;
+          if (r.suggestPorts) {
+            $("HTTP_PORT").value = r.suggestPorts.http;
+            $("HTTPS_PORT").value = r.suggestPorts.https;
+            $("machine").querySelector("details").open = true;
+            $("portsNote").textContent = TEXT[lang].portsSuggested(r.suggestPorts.http, r.suggestPorts.https);
+          }
           if (!r.ready) {
             // Something blocks: no install button until it is fixed and checked again.
             found = null;
@@ -648,7 +681,15 @@
       // The answers of last time (no secret in them).
       api("/api/state").then((s) => {
         const a = s.answers || {};
-        for (const k of ["SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KEY_FILE", "DUCKDNS_DOMAIN"])
+        for (const k of [
+          "SSH_HOST",
+          "SSH_PORT",
+          "SSH_USER",
+          "SSH_KEY_FILE",
+          "DUCKDNS_DOMAIN",
+          "HTTP_PORT",
+          "HTTPS_PORT",
+        ])
           if (a[k]) $(k).value = a[k];
         if (a.MODE) for (const r of document.querySelectorAll("[name=mode]")) r.checked = r.value === a.MODE;
         showMode();

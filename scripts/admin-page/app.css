@@ -1,0 +1,150 @@
+/* The bot's admin page: the theme follows the system's light or dark mode. */
+:root {
+  --bg: #0d0f12;
+  --card: #171a1f;
+  --line: #2a2f37;
+  --text: #e8e6e1;
+  --sub: #9aa0a8;
+  --accent: #f07b05;
+  --bad: #e5484d;
+  --ok: #3fb950;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f5f2;
+    --card: #fff;
+    --line: #ddd;
+    --text: #1b1d21;
+    --sub: #5d636b;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    15px/1.5 system-ui,
+    sans-serif;
+}
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+h1 {
+  font-size: 22px;
+  margin: 0;
+}
+h1 span {
+  color: var(--accent);
+}
+section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 16px 0;
+}
+h2 {
+  font-size: 14px;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+dt {
+  color: var(--sub);
+}
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+label {
+  display: block;
+  margin: 12px 0 4px;
+  font-weight: 600;
+}
+label.check {
+  font-weight: 400;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+input:not([type="checkbox"]) {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+input.bad {
+  border-color: var(--bad);
+}
+.sub {
+  color: var(--sub);
+  font-size: 13px;
+}
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 12px;
+}
+.row.end {
+  justify-content: flex-end;
+}
+button {
+  background: var(--accent);
+  color: #111;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font: 600 14px system-ui;
+  cursor: pointer;
+}
+button.ghost {
+  background: none;
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.msg {
+  font-size: 14px;
+}
+.ok {
+  color: var(--ok);
+}
+.bad {
+  color: var(--bad);
+}
+ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.lang {
+  float: right;
+}
+.lang button {
+  background: none;
+  color: var(--sub);
+  padding: 4px 6px;
+  font-weight: 400;
+}
+[hidden] {
+  display: none !important;
+}

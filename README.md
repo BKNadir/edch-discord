@@ -138,27 +138,63 @@ Debian, Ubuntu, Raspberry Pi OS, Fedora and their relatives. Before the setup:
   between).
 - **DuckDNS**: create a free name on [duckdns.org](https://www.duckdns.org) (`mysquadron` for
   `mysquadron.duckdns.org`) and note its token. The machine keeps it pointed at your network's IP.
-- **Your router**: forward ports **80** and **443** (TCP) to the machine. Port 80 is used only to
-  get the HTTPS certificate (Let's Encrypt).
-- Some Internet providers share one IP between customers (**CGNAT**): ports can't be forwarded
-  then. Many give a public IP on request.
+- **At home**: your router forwards ports **80** and **443** (TCP) to the machine. Port 80 is used
+  only to get the HTTPS certificate (Let's Encrypt). Some Internet providers share one IP between
+  customers (**CGNAT**): ports can't be forwarded then; many give a public IP on request.
+- **On a rented server (VPS)**: no router, but some providers (Oracle Cloud, AWS…) have a firewall
+  of their own in their console: let ports 80 and 443 in there.
+- **Ports already taken** on the machine (another web server): the check finds it and offers other
+  ports for Caddy (8080 and 8443, under "SSH key, sudo password, ports"). From the Internet it is
+  still 80 and 443: at home, the router forwards 80 to 8080 and 443 to 8443. On a VPS this can't
+  work: free ports 80 and 443 there, or use Cloudflare.
 
 "Connect and check" tells whether the bot is already on the machine. A new install sets up Node.js
 22, the bot in `~/edch-discord` (its settings in `bot.env`, readable by that user only), a systemd
 service `edch-discord` that starts at boot, DuckDNS updates every 5 minutes,
 [Caddy](https://caddyserver.com) for HTTPS in front of the bot, and opens ports 80 and 443 in the
-firewall (ufw or firewalld) when one is active. It ends with the bot's address,
+firewall (ufw or firewalld) when one is active. On the machine it takes about 250 MB (Node.js,
+Caddy, the bot without the Cloudflare tools); the check asks for 500 MB free, for the updates. It ends with the bot's address,
 `https://<name>.duckdns.org`, and checks it answers from the Internet. The progress shows in the
 page, line by line.
 
 On a machine that has the bot, the page offers **Update the bot**, **Open the admin page**, and
-setting it up again with new settings (another DuckDNS name, a new token…).
+setting it up again with new settings (another DuckDNS name, new ports, a new token…).
 
-**Admin page**: opened through the setup's SSH connection (keep the setup page open while you use
-it). It shows the version and the updates, changes the Discord ids and secrets or the DuckDNS token,
-and updates the bot from GitHub: with a button, or **every night by itself** (on by default). An
-update that fails to build puts the previous version back. The page listens on the machine itself
-only (`127.0.0.1:8788`) and needs its own key: it can't be reached from the Internet.
+### The admin page (Linux machine)
+
+The admin page shows the version and the updates, changes the Discord ids and secrets or the
+DuckDNS token, and updates the bot from GitHub: with a button, or **every night by itself** (on by
+default). An update that fails to build puts the previous version back.
+
+**It is never on the Internet.** It listens on the machine itself only (`127.0.0.1:8788`); Caddy
+publishes the bot, not this page. You reach it through an **SSH tunnel**: the SSH connection
+carries the page from the machine to your PC, so only someone who can log in to the machine with
+SSH can open it.
+
+- **From the setup page**: "Open the admin page" makes the tunnel and opens the page (keep the
+  setup page open while you use it).
+- **By hand**, from any PC with SSH:
+  ```
+  ssh -L 8788:127.0.0.1:8788 user@machine
+  ```
+  Keep that connection open and browse to `http://127.0.0.1:8788`. For the first visit, add the key
+  the account needs: `http://127.0.0.1:8788/?k=<key>`, where the key is the `ADMIN_TOKEN` line of
+  `~/edch-discord/bot.env` (`grep ADMIN_TOKEN ~/edch-discord/bot.env` in the SSH session). Windows
+  has `ssh` built in (PowerShell); PuTTY does the same with Connection → SSH → Tunnels.
+
+**Its account**: at the first visit the page asks you to make a user name and a password (at least
+12 characters), only with that key. The password is kept as a salted scrypt hash in
+`~/edch-discord/admin-credentials.json`, readable by that user only. After 5 wrong sign-ins, the
+sign-in waits 15 minutes. A session ends after 8 hours, or 1 hour unused; the page has a sign-out
+and a password change. **Lost the password?** Delete that file over SSH
+(`rm ~/edch-discord/admin-credentials.json`) and open the page again with the key: it asks for a
+new account.
+
+**Its protections**: it answers only requests addressed to `127.0.0.1` or `localhost` (no DNS
+rebinding), changes need its own header and origin (no requests from other sites), the session is
+an HttpOnly, SameSite=Strict cookie, and a strict Content-Security-Policy lets the page run its own
+script file and nothing else; every value is shown as text, checked before it is written, and the
+commands it runs are fixed (git, npm, the build), never made from what is typed.
 
 Logs on the machine: `sudo journalctl -u edch-discord` (the bot), `sudo journalctl -u caddy`
 (HTTPS).
@@ -201,9 +237,11 @@ npm run build:node  # the Node build (dist-node/) that scripts/server.mjs runs o
 ```
 
 The request handler (`src/handler.ts`) is the same on Cloudflare (`src/index.ts`) and on a machine
-(`scripts/server.mjs`, with the admin page in `scripts/admin.mjs`). The install and update scripts
+(`scripts/server.mjs`, with the admin page in `scripts/admin.mjs`, its sign-in in
+`scripts/admin-auth.mjs` and its files in `scripts/admin-page/`). The install and update scripts
 are in `deploy/`: `setup.mjs` and `setup-page.html` (the setup page), `setup-windows.ps1` and
-`setup-linux.sh` (start it), `server-setup.sh` and `server-update.sh` (run on the Linux machine).
+`setup-linux.sh` (start it), `server-setup.sh`, `server-update.sh` and `server-build.sh` (run on the
+Linux machine).
 
 The report format is EDCH's `docs/BGS_SYNC.md`.
 

@@ -38,7 +38,17 @@ function readAnswers() {
 }
 
 /** The keys .edch-install may hold: never a password, token or key. */
-const KEPT = ["MODE", "SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KEY_FILE", "SSH_HOST_KEY", "DUCKDNS_DOMAIN"];
+const KEPT = [
+  "MODE",
+  "SSH_HOST",
+  "SSH_PORT",
+  "SSH_USER",
+  "SSH_KEY_FILE",
+  "SSH_HOST_KEY",
+  "DUCKDNS_DOMAIN",
+  "HTTP_PORT",
+  "HTTPS_PORT",
+];
 function saveAnswers(values) {
   const kept = { ...readAnswers(), ...values };
   const text = KEPT.filter((k) => kept[k] !== undefined && kept[k] !== "")
@@ -353,6 +363,12 @@ function remote(conn, command, { sudoPassword = "", input, quiet = false } = {})
   });
 }
 
+/** Room the machine needs: Node.js (~180 MB), Caddy (~40 MB), the bot and its tools, and margin. */
+const MIN_DISK_MB = 500;
+
+/** The ports Caddy is asked to use on the machine (80 and 443 unless others are given). */
+const portsOf = (form) => ({ http: form.HTTP_PORT || "80", https: form.HTTPS_PORT || "443" });
+
 /** What the machine says about itself: KEY=value lines (nothing secret). */
 const MACHINE_PROBE = `
 . /etc/os-release 2>/dev/null; echo "OS=\${PRETTY_NAME:-unknown}"
@@ -363,7 +379,7 @@ echo "ROOT=$([ "$(id -u)" -eq 0 ] && echo yes || echo no)"
 echo "NODE=$(node -v 2>/dev/null)"
 for c in git curl caddy sudo; do command -v $c >/dev/null && echo "HAS_$c=yes" || echo "HAS_$c=no"; done
 echo "DISK_MB=$(df -Pm "$HOME" | awk 'NR==2{print $4}')"
-echo "PORTS=$( (ss -ltnH 2>/dev/null || netstat -ltn 2>/dev/null) | awk '{print $4}' | grep -oE ':(80|443)$' | sort -u | tr '\\n' ' ')"
+echo "PORTS=$( (ss -ltnH 2>/dev/null || netstat -ltn 2>/dev/null) | awk '{print $4}' | grep -oE '[0-9]+$' | sort -un | tr '\\n' ' ')"
 if command -v curl >/dev/null; then
   for site in github.com nodejs.org www.edsm.net www.duckdns.org; do
     curl -fsS -m 10 -o /dev/null "https://$site" 2>/dev/null && echo "NET_$site=yes" || echo "NET_$site=no"
@@ -376,7 +392,7 @@ test -f ~/edch-discord/bot.env && echo INSTALLED=yes || echo INSTALLED=no
  * Whether the machine can take the bot: what is there, what the setup installs (Node.js 22, git,
  * curl, Caddy), and what blocks it, with the reason.
  */
-async function machineChecks(conn, sudoPassword) {
+async function machineChecks(conn, sudoPassword, ports = { http: "80", https: "443" }) {
   const out = await remote(conn, "bash -s", { input: MACHINE_PROBE, quiet: true });
   const v = Object.fromEntries(
     out
@@ -445,23 +461,34 @@ async function machineChecks(conn, sudoPassword) {
     v.HAS_caddy === "yes" ? "ok" : "install",
     v.HAS_caddy === "yes" ? "" : "will be installed",
   );
-  const busy = (v.PORTS ?? "").trim();
+  // Caddy's ports on the machine: 80 and 443, or those chosen when they are taken.
+  const listening = new Set((v.PORTS ?? "").split(/\s+/).filter(Boolean));
+  const wanted = [ports.http, ports.https];
+  const taken = wanted.filter((p) => listening.has(p));
+  const byCaddy = taken.length > 0 && v.HAS_caddy === "yes";
+  const free = (p) => !listening.has(p);
+  // Other ports to offer when 80 and 443 are taken (8080 and 8443, or the next free ones).
+  const http = ["8080", "8081", "8082"].find(free);
+  const https = ["8443", "8444", "8445"].find(free);
+  const suggest = taken.length && !byCaddy && http && https ? { http, https } : null;
   check(
     list,
-    "Ports 80 and 443",
-    !busy || v.HAS_caddy === "yes" ? "ok" : "error",
-    !busy
+    `Ports ${ports.http} and ${ports.https}`,
+    !taken.length || byCaddy ? "ok" : "error",
+    !taken.length
       ? "free"
-      : v.HAS_caddy === "yes"
+      : byCaddy
         ? "used by Caddy"
-        : `${busy.replace(/:/g, "").split(" ").join(" and ")} already used by another program (a web server?): Caddy needs them`,
+        : `${taken.join(" and ")} already used by another program (a web server?)${suggest ? `: choose other ports, ${suggest.http} and ${suggest.https} are free` : ""}`,
   );
   const disk = Number(v.DISK_MB ?? 0);
   check(
     list,
     "Disk space",
-    disk >= 1024 ? "ok" : "error",
-    disk >= 1024 ? `${Math.round(disk / 1024)} GB free` : `${disk} MB free: about 1 GB is needed`,
+    disk >= MIN_DISK_MB ? "ok" : "error",
+    disk >= MIN_DISK_MB
+      ? `${disk >= 1024 ? `${Math.round(disk / 1024)} GB` : `${disk} MB`} free`
+      : `${disk} MB free: about ${MIN_DISK_MB} MB are needed (Node.js, Caddy and the bot take about 250 MB, the rest for updates)`,
   );
   if (v.HAS_curl === "yes") {
     const offline = ["github.com", "nodejs.org", "www.edsm.net", "www.duckdns.org"].filter(
@@ -474,7 +501,7 @@ async function machineChecks(conn, sudoPassword) {
       offline.length ? `the machine can't reach ${offline.join(", ")}` : "",
     );
   } else check(list, "Internet", "install", "checked once curl is installed");
-  return { checks: list, installed: v.INSTALLED === "yes" };
+  return { checks: list, installed: v.INSTALLED === "yes", suggestPorts: suggest };
 }
 
 async function machineInstall(form) {
@@ -482,7 +509,7 @@ async function machineInstall(form) {
   try {
     const sudo = form.SUDO_PASSWORD || form.SSH_PASSWORD || "";
     log("▶ The machine");
-    const { checks, installed } = await machineChecks(conn, sudo);
+    const { checks, installed } = await machineChecks(conn, sudo, portsOf(form));
     job.result = { checks };
     await settle(checks);
     if (installed && !form.DISCORD_BOT_TOKEN) {
@@ -501,6 +528,8 @@ async function machineInstall(form) {
         "DISCORD_GUILD_ID",
         "DUCKDNS_DOMAIN",
         "DUCKDNS_TOKEN",
+        "HTTP_PORT",
+        "HTTPS_PORT",
       ]
         .map((k) => `${k}=${form[k] ?? ""}`)
         .join("\n");
@@ -516,7 +545,11 @@ async function machineInstall(form) {
         },
       );
     }
-    saveAnswers({ MODE: "server", DUCKDNS_DOMAIN: form.DUCKDNS_DOMAIN || readAnswers().DUCKDNS_DOMAIN });
+    saveAnswers({
+      MODE: "server",
+      DUCKDNS_DOMAIN: form.DUCKDNS_DOMAIN || readAnswers().DUCKDNS_DOMAIN,
+      ...(form.DISCORD_BOT_TOKEN ? { HTTP_PORT: form.HTTP_PORT || "80", HTTPS_PORT: form.HTTPS_PORT || "443" } : {}),
+    });
     const domain = form.DUCKDNS_DOMAIN || readAnswers().DUCKDNS_DOMAIN;
     log("✔ Done");
     return {
@@ -548,7 +581,8 @@ async function openAdmin(form) {
     });
   });
   await new Promise((resolve) => adminTunnel.listen(0, "127.0.0.1", resolve));
-  const url = `http://127.0.0.1:${adminTunnel.address().port}/?t=${token}`;
+  // The key lets the page make its first account; once made, the page asks for the sign-in.
+  const url = `http://127.0.0.1:${adminTunnel.address().port}/?k=${token}`;
   hide(token);
   log("✔ Admin page open in a new tab (this page keeps the connection: leave it open while you use it)");
   return { adminUrl: url };
@@ -568,6 +602,8 @@ const CHECKS = {
   SSH_KEY_FILE: (v) => existsSync(v),
   DUCKDNS_DOMAIN: (v) => /^[a-z0-9-]{1,63}$/.test(v),
   DUCKDNS_TOKEN: (v) => /^[0-9a-f-]{36}$/i.test(v),
+  HTTP_PORT: (v) => /^\d{2,5}$/.test(v) && +v < 65536,
+  HTTPS_PORT: (v) => /^\d{2,5}$/.test(v) && +v < 65536,
 };
 /** Fields that are wrong, and those missing where `required`. */
 function badFields(form, required) {
@@ -671,11 +707,15 @@ const server = createHttpServer(async (req, res) => {
         log(`▶ SSH ${form.SSH_USER}@${form.SSH_HOST}:${form.SSH_PORT}`);
         const conn = await connect(form);
         try {
-          const { checks, installed } = await machineChecks(conn, form.SUDO_PASSWORD || form.SSH_PASSWORD || "");
+          const { checks, installed, suggestPorts } = await machineChecks(
+            conn,
+            form.SUDO_PASSWORD || form.SSH_PASSWORD || "",
+            portsOf(form),
+          );
           log(installed ? "✔ An EDCH bot is already on this machine." : "✔ No EDCH bot on this machine yet.");
           const ready = !checks.some((c) => c.status === "error");
           if (!ready) log("✖ Fix what is marked ✖ on the machine, then check again.");
-          return { installed, checks, ready };
+          return { installed, checks, ready, suggestPorts };
         } finally {
           conn.end();
         }

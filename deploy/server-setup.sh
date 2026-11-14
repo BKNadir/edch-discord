@@ -3,7 +3,8 @@
 # that machine by the setup page of a PC, over SSH (deploy/setup.mjs); it can be run by hand too:
 #   bash server-setup.sh <settings file>
 # The settings file holds KEY=value lines: DISCORD_APPLICATION_ID, DISCORD_PUBLIC_KEY,
-# DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DUCKDNS_DOMAIN, DUCKDNS_TOKEN. It is deleted once read;
+# DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DUCKDNS_DOMAIN, DUCKDNS_TOKEN, and optionally HTTP_PORT and
+# HTTPS_PORT (Caddy's ports on this machine, 80 and 443 by default). It is deleted once read;
 # nothing secret is printed. The key-signing secret (LINK_SECRET) is made here, once.
 #
 # What it does, idempotent (running it again updates):
@@ -14,7 +15,8 @@
 #     page on 127.0.0.1:8788 (reached through SSH) and nightly updates from GitHub
 #   - DuckDNS kept up to date with this network's IP (a systemd timer, every 5 minutes)
 #   - Caddy: HTTPS for <domain>.duckdns.org (Let's Encrypt) in front of the bot
-#   - the firewall (ufw or firewalld, when active): ports 80 and 443 open
+#   - the firewall (ufw or firewalld, when active): Caddy's ports open (80 and 443, or the
+#     HTTP_PORT and HTTPS_PORT given when those are taken)
 set -euo pipefail
 
 SETTINGS="${1:?usage: server-setup.sh <settings file>}"
@@ -41,6 +43,11 @@ DUCKDNS_TOKEN="$(get DUCKDNS_TOKEN)"
 [[ "$DUCKDNS_DOMAIN" =~ ^[a-z0-9-]+$ ]] || fail "DUCKDNS_DOMAIN must be the name only (\"mybot\" for mybot.duckdns.org)"
 [ -n "$DUCKDNS_TOKEN" ] || fail "DUCKDNS_TOKEN is missing"
 HOST="$DUCKDNS_DOMAIN.duckdns.org"
+# The ports Caddy listens on, on this machine: 80 and 443, or others when they are taken (the
+# router then forwards the Internet's 80 and 443 to them: Let's Encrypt and Discord use those).
+HTTP_PORT="$(get HTTP_PORT)"; HTTP_PORT="${HTTP_PORT:-80}"
+HTTPS_PORT="$(get HTTPS_PORT)"; HTTPS_PORT="${HTTPS_PORT:-443}"
+[[ "$HTTP_PORT" =~ ^[0-9]{2,5}$ && "$HTTPS_PORT" =~ ^[0-9]{2,5}$ && "$HTTP_PORT" != "$HTTPS_PORT" ]] || fail "HTTP_PORT and HTTPS_PORT must be two different port numbers"
 
 say "Sudo (installs packages and services)"
 sudo -v
@@ -110,9 +117,7 @@ umask 022
 
 say "Building (dependencies, the game's faction list from EDSM, the bot)"
 cd "$APP_DIR"
-npm install --no-audit --no-fund --loglevel=error
-node scripts/build-factions.mjs
-npm run -s build:node
+bash deploy/server-build.sh
 
 say "Service edch-discord (starts at boot)"
 sudo tee /etc/systemd/system/edch-discord.service >/dev/null <<UNIT
@@ -191,24 +196,38 @@ $HOST {
 	reverse_proxy 127.0.0.1:$PORT
 }
 # End of EDCH bot"
-if [ -f "$CADDYFILE" ] && grep -q '^# EDCH bot (written' "$CADDYFILE"; then
-  # Set up before: our block is replaced, the rest kept.
-  sudo sed -i '/^# EDCH bot (written/,/^# End of EDCH bot/d' "$CADDYFILE"
-  printf '%s\n' "$BLOCK" | sudo tee -a "$CADDYFILE" >/dev/null
-elif [ -f "$CADDYFILE" ] && grep -qE '^:80 *\{' "$CADDYFILE" && ! grep -qvE '^\s*(#.*)?$|^:80|^\s*root|^\s*file_server|^\}' "$CADDYFILE"; then
-  # The package's example page only: replaced.
-  printf '%s\n' "$BLOCK" | sudo tee "$CADDYFILE" >/dev/null
-else
-  sudo mkdir -p /etc/caddy
-  printf '\n%s\n' "$BLOCK" | sudo tee -a "$CADDYFILE" >/dev/null
+PORTS_BLOCK=""
+if [ "$HTTP_PORT" != 80 ] || [ "$HTTPS_PORT" != 443 ]; then
+  # Caddy's global options: they must come first in the file.
+  PORTS_BLOCK="# EDCH bot ports (written by server-setup.sh)
+{
+	http_port $HTTP_PORT
+	https_port $HTTPS_PORT
+}
+# End of EDCH bot ports"
 fi
+sudo mkdir -p /etc/caddy
+# The file without what this script wrote before.
+REST="$( (sudo cat "$CADDYFILE" 2>/dev/null || true) | sed '/^# EDCH bot (written/,/^# End of EDCH bot$/d; /^# EDCH bot ports (written/,/^# End of EDCH bot ports$/d')"
+if [ -z "$(printf '%s' "$REST" | grep -vE '^\s*(#.*)?$')" ] ||
+  { printf '%s\n' "$REST" | grep -qE '^:80 *\{' && ! printf '%s\n' "$REST" | grep -qvE '^\s*(#.*)?$|^:80|^\s*root|^\s*file_server|^\}'; }; then
+  # Empty, or the package's example page only: the file is ours.
+  REST=""
+elif [ -n "$PORTS_BLOCK" ]; then
+  fail "Caddy already serves other sites on this machine: other ports for the bot would move them too. Keep ports 80 and 443, or set Caddy's http_port and https_port yourself in $CADDYFILE."
+fi
+{
+  [ -n "$PORTS_BLOCK" ] && printf '%s\n\n' "$PORTS_BLOCK"
+  [ -n "$REST" ] && printf '%s\n\n' "$REST"
+  printf '%s\n' "$BLOCK"
+} | sudo tee "$CADDYFILE" >/dev/null
 sudo caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null || fail "Caddy's configuration is invalid: see $CADDYFILE"
 
-say "Firewall: ports 80 and 443"
+say "Firewall: ports $HTTP_PORT and $HTTPS_PORT"
 if command -v ufw >/dev/null && sudo ufw status | grep -q "Status: active"; then
-  sudo ufw allow 80/tcp >/dev/null && sudo ufw allow 443/tcp >/dev/null
+  sudo ufw allow "$HTTP_PORT/tcp" >/dev/null && sudo ufw allow "$HTTPS_PORT/tcp" >/dev/null
 elif command -v firewall-cmd >/dev/null && sudo firewall-cmd --state >/dev/null 2>&1; then
-  sudo firewall-cmd -q --permanent --add-service=http --add-service=https && sudo firewall-cmd -q --reload
+  sudo firewall-cmd -q --permanent --add-port="$HTTP_PORT/tcp" --add-port="$HTTPS_PORT/tcp" && sudo firewall-cmd -q --reload
 else
   echo "No active firewall found."
 fi
@@ -236,7 +255,9 @@ if [ "$PUBLIC_OK" = yes ]; then
 else
   cat <<NOTE
 It doesn't answer from the Internet yet. Check:
-  - your router forwards ports 80 and 443 (TCP) to this machine ($(hostname -I 2>/dev/null | awk '{print $1}'));
+  - your router forwards the Internet's ports 80 and 443 (TCP) to this machine
+    ($(hostname -I 2>/dev/null | awk '{print $1}')), to its ports $HTTP_PORT and $HTTPS_PORT;
+  - on a rented server (VPS): its provider's firewall lets ports 80 and 443 in;
   - your Internet provider gives you a public IP (no CGNAT; some providers turn it off on request);
   - then: sudo systemctl restart caddy, and wait a minute for the certificate.
 Logs: sudo journalctl -u caddy -n 50   and   sudo journalctl -u edch-discord -n 50

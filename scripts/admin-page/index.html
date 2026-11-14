@@ -1,0 +1,104 @@
+<!doctype html>
+<!-- The bot's admin page (scripts/admin.mjs): sign-in, status, updates, settings. Its script and
+     styles are separate files: the page's security policy runs nothing else. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>EDCH bot admin</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <div class="lang">
+        <button type="button" data-lang="en">EN</button><button type="button" data-lang="fr">FR</button>
+      </div>
+      <h1><span>EDCH</span> bot admin</h1>
+
+      <!-- First visit: make the account -->
+      <section id="create" hidden>
+        <h2 data-t="createTitle"></h2>
+        <p class="sub" data-t="createHelp"></p>
+        <form id="createForm" autocomplete="off">
+          <label for="newUser" data-t="user"></label><input id="newUser" autocomplete="username" maxlength="32" />
+          <label for="newPassword" data-t="password"></label
+          ><input id="newPassword" type="password" autocomplete="new-password" maxlength="200" />
+          <label for="newPassword2" data-t="passwordAgain"></label
+          ><input id="newPassword2" type="password" autocomplete="new-password" maxlength="200" />
+          <div class="sub" data-t="passwordRules"></div>
+          <div class="row">
+            <button type="submit" data-t="createButton"></button><span class="msg bad" id="createMsg"></span>
+          </div>
+        </form>
+      </section>
+
+      <!-- Sign-in -->
+      <section id="login" hidden>
+        <h2 data-t="loginTitle"></h2>
+        <form id="loginForm">
+          <label for="user" data-t="user"></label><input id="user" autocomplete="username" maxlength="32" />
+          <label for="password" data-t="password"></label
+          ><input id="password" type="password" autocomplete="current-password" maxlength="200" />
+          <div class="row">
+            <button type="submit" data-t="loginButton"></button><span class="msg bad" id="loginMsg"></span>
+          </div>
+        </form>
+        <p class="sub" data-t="lostHelp"></p>
+      </section>
+
+      <!-- Signed in -->
+      <div id="app" hidden>
+        <div class="row end"><button class="ghost" id="logout" type="button" data-t="logout"></button></div>
+        <section>
+          <h2 data-t="status"></h2>
+          <dl id="status"></dl>
+        </section>
+        <section>
+          <h2 data-t="updates"></h2>
+          <label class="check"><input type="checkbox" id="auto" /> <span data-t="auto"></span></label>
+          <div id="pending" class="sub"></div>
+          <div class="row">
+            <button class="ghost" id="check" type="button" data-t="check"></button>
+            <button id="update" type="button" data-t="update"></button>
+            <span class="msg" id="updateMsg"></span>
+          </div>
+        </section>
+        <section>
+          <h2 data-t="settings"></h2>
+          <form id="settingsForm" autocomplete="off">
+            <label for="DISCORD_APPLICATION_ID">Application ID</label
+            ><input id="DISCORD_APPLICATION_ID" name="DISCORD_APPLICATION_ID" inputmode="numeric" />
+            <label for="DISCORD_PUBLIC_KEY">Public Key</label
+            ><input id="DISCORD_PUBLIC_KEY" name="DISCORD_PUBLIC_KEY" spellcheck="false" />
+            <label for="DISCORD_BOT_TOKEN" data-t="token"></label
+            ><input id="DISCORD_BOT_TOKEN" name="DISCORD_BOT_TOKEN" type="password" />
+            <div class="sub" data-t="blankKeeps"></div>
+            <label for="DISCORD_GUILD_ID" data-t="guild"></label
+            ><input id="DISCORD_GUILD_ID" name="DISCORD_GUILD_ID" inputmode="numeric" />
+            <label for="DUCKDNS_TOKEN" data-t="duck"></label
+            ><input id="DUCKDNS_TOKEN" name="DUCKDNS_TOKEN" type="password" />
+            <div class="sub" data-t="blankKeeps"></div>
+            <div class="row"><button type="submit" data-t="save"></button><span class="msg" id="saveMsg"></span></div>
+          </form>
+          <p class="sub" data-t="domainNote"></p>
+        </section>
+        <section>
+          <h2 data-t="account"></h2>
+          <form id="passwordForm" autocomplete="off">
+            <label for="currentPassword" data-t="currentPassword"></label
+            ><input id="currentPassword" type="password" autocomplete="current-password" maxlength="200" />
+            <label for="nextPassword" data-t="nextPassword"></label
+            ><input id="nextPassword" type="password" autocomplete="new-password" maxlength="200" />
+            <div class="sub" data-t="passwordRules"></div>
+            <div class="row">
+              <button type="submit" class="ghost" data-t="changePassword"></button
+              ><span class="msg" id="passwordMsg"></span>
+            </div>
+          </form>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
