@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Sets up the EDCH bot on a Linux machine (Debian, Ubuntu, Fedora and their relatives). Run on
-# that machine by the install scripts of a PC, over SSH (deploy/install-windows.ps1,
-# deploy/install-linux.sh); it can be run by hand too:
+# that machine by the setup page of a PC, over SSH (deploy/setup.mjs); it can be run by hand too:
 #   bash server-setup.sh <settings file>
 # The settings file holds KEY=value lines: DISCORD_APPLICATION_ID, DISCORD_PUBLIC_KEY,
 # DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DUCKDNS_DOMAIN, DUCKDNS_TOKEN. It is deleted once read;
@@ -231,7 +230,7 @@ done
 say "Done"
 echo "Bot address:            https://$HOST"
 echo "Interactions Endpoint:  https://$HOST/interactions   (developer portal → General Information)"
-echo "Admin page:             from your PC, deploy/admin-linux.sh or deploy/admin-windows.ps1 (through SSH)"
+echo "Admin page:             from your PC, the setup page's \"Open the admin page\" (through SSH)"
 if [ "$PUBLIC_OK" = yes ]; then
   echo "It answers from the Internet with HTTPS."
 else

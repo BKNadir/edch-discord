@@ -4,29 +4,12 @@
 //   npm run update
 
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 
 console.log("1/3 Building the faction list…");
 execSync("node scripts/build-factions.mjs", { stdio: "inherit" });
 
-// The ids given to the install script (.edch-install, no secret in it) go with the deploy, so
-// wrangler.toml stays as in the repository.
-const answers = {};
-try {
-  for (const line of readFileSync(".edch-install", "utf8").split(/\r?\n/)) {
-    const match = /^([A-Z_]+)=(\d*)$/.exec(line.trim());
-    if (match) answers[match[1]] = match[2];
-  }
-} catch {
-  // Set up by hand: wrangler.toml holds them.
-}
-const vars = ["DISCORD_APPLICATION_ID", "DISCORD_GUILD_ID"]
-  .filter((key) => answers[key])
-  .map((key) => ` --var ${key}:${answers[key]}`)
-  .join("");
-
 console.log("2/3 Deploying the Worker…");
-const output = execSync(`npx wrangler deploy${vars}`, { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"] });
+const output = execSync("npx wrangler deploy", { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"] });
 process.stdout.write(output);
 
 console.log("3/3 Declaring /bgs…");

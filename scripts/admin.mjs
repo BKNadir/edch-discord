@@ -1,8 +1,8 @@
 // The bot's admin page, on its own Linux machine: the settings (Discord ids and secrets, the
 // DuckDNS token), where it stands (version, uptime, updates), and updates from GitHub, by a button
 // or every night. Started by server.mjs when bot.env has ADMIN_PORT and ADMIN_TOKEN.
-// It listens on 127.0.0.1 only: reach it from your PC through SSH (deploy/admin-linux.sh,
-// deploy/admin-windows.ps1), never from the Internet. Every call needs ADMIN_TOKEN.
+// It listens on 127.0.0.1 only: reach it from your PC through SSH (the setup page's "Open the
+// admin page", deploy/setup.mjs), never from the Internet. Every call needs ADMIN_TOKEN.
 // After a change of settings or an update, the bot stops and systemd starts it again.
 
 import { execFile } from "node:child_process";

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Updates the EDCH bot on its Linux machine: new code, dependencies, the game's faction list, the
-# build, then a restart. Run by the update scripts of a PC over SSH, or by hand:
+# build, then a restart. Run by the setup page of a PC over SSH (deploy/setup.mjs), or by hand:
 #   bash ~/edch-discord/deploy/server-update.sh
 # The bot declares /bgs to Discord itself at its first request after the restart.
 set -euo pipefail

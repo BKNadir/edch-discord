@@ -6,7 +6,7 @@ bounties, combat bonds, trade, cartography, and what counted against it), and `/
 the squadron's work system by system.
 
 Each squadron hosts its own copy (below): on Cloudflare's free plan (a Worker, nothing to keep
-running) or on a Linux machine of its own, installed from a PC by a script.
+running) or on a Linux machine of its own, installed from a PC by a setup page.
 
 ## Where the data is
 
@@ -75,9 +75,8 @@ reports still count.
 ## Hosting your squadron's bot
 
 The bot runs either on **Cloudflare** (a free Worker: nothing to keep switched on) or on **a Linux
-machine of yours** (a Raspberry Pi, a home server…), reached from your PC with SSH. Scripts do the
-whole installation from your PC, Windows or Linux; a page opens in your browser for the settings.
-About twenty minutes, once.
+machine of yours** (a Raspberry Pi, a home server…), reached from your PC with SSH. One script per
+PC system opens a setup page in your browser, where everything happens: install, update, settings.
 
 ### 1. Discord application
 
@@ -88,7 +87,7 @@ and `applications.commands`; permissions Manage Roles, Manage Channels, View Cha
 Messages, Manage Messages, Pin Messages, Read Message History, Create Public Threads, Send Messages
 in Threads. No privileged intent is needed.
 
-### 2. On your PC
+### 2. The setup, from your PC
 
 Install [Node.js](https://nodejs.org) 20 or newer and [Git](https://git-scm.com), then:
 
@@ -97,28 +96,43 @@ git clone https://github.com/BKNadir/edch-discord.git
 cd edch-discord
 ```
 
-| Your PC | Install                                                               | Update                        | Admin page (Linux machine)   |
-| ------- | --------------------------------------------------------------------- | ----------------------------- | ---------------------------- |
-| Windows | `powershell -ExecutionPolicy Bypass -File deploy\install-windows.ps1` | `…\update-windows.ps1`        | `…\admin-windows.ps1`        |
-| Linux   | `bash deploy/install-linux.sh`                                        | `bash deploy/update-linux.sh` | `bash deploy/admin-linux.sh` |
+- **Windows**: `powershell -ExecutionPolicy Bypass -File deploy\setup-windows.ps1`
+- **Linux** (or macOS): `bash deploy/setup-linux.sh`
 
-The install script opens a setup page in your browser (on your PC only, `127.0.0.1`, a one-time
-address): where the bot runs, the Discord ids and secrets, and for a Linux machine its SSH address
-and DuckDNS name. The answers without secrets are kept in `.edch-install` for the update and admin
-scripts; secrets go to Cloudflare or to the machine, nowhere else.
+The script installs the setup's tools (`npm install`) and opens the **setup page** in your browser.
+It runs on your PC only (`127.0.0.1`, a one-time address); keep the script's window open while you
+use it. Passwords and secrets stay in memory while it runs and go to Cloudflare or to your machine
+only. `.edch-install` keeps the answers without any secret (where the bot runs, the SSH address,
+the machine's key fingerprint) for next time.
+
+Run the same script again to **update** the bot: on Cloudflare, it deploys the new version; on a
+Linux machine, it updates it (or use the admin page, below). Either way the **game's faction list**
+offered by `/bgs faction add` is rebuilt from EDSM's nightly dump. Someone else can update the bot
+from their own PC: with access to the Cloudflare account, or the machine's SSH address and a user
+with sudo rights.
 
 ### 3a. On Cloudflare
 
-Needs a free [Cloudflare](https://dash.cloudflare.com/sign-up) account: the script signs you in,
-deploys, and keeps the secrets in Cloudflare. Its address is `https://edch-discord.<you>.workers.dev`.
+Needs a free [Cloudflare](https://dash.cloudflare.com/sign-up) account. "Sign in and check" opens
+Cloudflare's sign-in, then tells whether an EDCH bot is already on that account:
+
+- **No bot yet**: give the Discord settings and install. The setup deploys the Worker and keeps
+  every setting as a Cloudflare secret (the ids too), so later deploys, from any PC, never change
+  them. The key-signing secret is made once.
+- **A bot is there**: "Update" deploys the new version. The settings are optional: empty, they are
+  kept; filled in, they replace the old ones. The key-signing secret never changes, so the members'
+  keys stay valid.
+
+The bot's address is `https://edch-discord.<you>.workers.dev`.
 
 ### 3b. On your Linux machine
 
-Debian, Ubuntu, Raspberry Pi OS, Fedora and their relatives. Before running the script:
+Debian, Ubuntu, Raspberry Pi OS, Fedora and their relatives. Before the setup:
 
-- **SSH**: you can log in to the machine from your PC (`ssh user@address`) with a user that has
-  sudo rights. An [SSH key](https://www.ssh.com/academy/ssh/keygen) saves typing the password each
-  time.
+- **SSH**: the machine's address, and a user with sudo rights. The page asks for the password (and
+  the sudo password if it differs); an SSH key from `~/.ssh` is used when there is one. The
+  machine's key is remembered: if it changes later, the setup stops (another machine, or someone in
+  between).
 - **DuckDNS**: create a free name on [duckdns.org](https://www.duckdns.org) (`mysquadron` for
   `mysquadron.duckdns.org`) and note its token. The machine keeps it pointed at your network's IP.
 - **Your router**: forward ports **80** and **443** (TCP) to the machine. Port 80 is used only to
@@ -126,35 +140,41 @@ Debian, Ubuntu, Raspberry Pi OS, Fedora and their relatives. Before running the 
 - Some Internet providers share one IP between customers (**CGNAT**): ports can't be forwarded
   then. Many give a public IP on request.
 
-The script installs on the machine: Node.js 22, the bot in `~/edch-discord` (its settings in
-`bot.env`, readable by that user only), a systemd service `edch-discord` that starts at boot,
-DuckDNS updates every 5 minutes, [Caddy](https://caddyserver.com) for HTTPS in front of the bot,
-and opens ports 80 and 443 in the firewall (ufw or firewalld) when one is active. It ends with the
-bot's address, `https://<name>.duckdns.org`, and checks it answers from the Internet.
+"Connect and check" tells whether the bot is already on the machine. A new install sets up Node.js
+22, the bot in `~/edch-discord` (its settings in `bot.env`, readable by that user only), a systemd
+service `edch-discord` that starts at boot, DuckDNS updates every 5 minutes,
+[Caddy](https://caddyserver.com) for HTTPS in front of the bot, and opens ports 80 and 443 in the
+firewall (ufw or firewalld) when one is active. It ends with the bot's address,
+`https://<name>.duckdns.org`, and checks it answers from the Internet. The progress shows in the
+page, line by line.
 
-**Admin page**: the admin script opens an SSH tunnel and the page in your browser. It shows the
-version and the updates, changes the Discord ids and secrets or the DuckDNS token, and updates the
-bot from GitHub: with a button, or **every night by itself** (on by default). An update that fails
-to build puts the previous version back. The page listens on the machine itself only
-(`127.0.0.1:8788`) and needs its own key: it can't be reached from the Internet.
+On a machine that has the bot, the page offers **Update the bot**, **Open the admin page**, and
+setting it up again with new settings (another DuckDNS name, a new token…).
 
-Logs: `sudo journalctl -u edch-discord` (the bot), `sudo journalctl -u caddy` (HTTPS).
+**Admin page**: opened through the setup's SSH connection (keep the setup page open while you use
+it). It shows the version and the updates, changes the Discord ids and secrets or the DuckDNS token,
+and updates the bot from GitHub: with a button, or **every night by itself** (on by default). An
+update that fails to build puts the previous version back. The page listens on the machine itself
+only (`127.0.0.1:8788`) and needs its own key: it can't be reached from the Internet.
+
+Logs on the machine: `sudo journalctl -u edch-discord` (the bot), `sudo journalctl -u caddy`
+(HTTPS).
 
 ### 4. Then, in the developer portal
 
 General Information → **Interactions Endpoint URL**: the bot's address followed by `/interactions`
-(Discord checks it right away). Installation: open the install link and add the bot to your server
-(it needs the Manage Server right there). The bot declares `/bgs` itself, with its own token, at its
-first request after each deploy or restart, and only when it changed.
+(the setup shows it; Discord checks it right away). Installation: open the install link and add the
+bot to your server (it needs the Manage Server right there). The bot declares `/bgs` itself, with
+its own token, at its first request after each deploy or restart, and only when it changed.
 
 The key `/bgs link` gives contains your bot's address: EDCH asks each member to confirm it the
 first time.
 
 ### By hand (Cloudflare)
 
-`npm install`, `npx wrangler login`, `DISCORD_APPLICATION_ID` and `DISCORD_GUILD_ID` in
-`wrangler.toml`, then `npx wrangler secret put` for `DISCORD_PUBLIC_KEY`, `DISCORD_BOT_TOKEN` and
-`LINK_SECRET` (any long random text; changing it cancels every key), and `npm run update`.
+`npm install`, `npx wrangler login`, then `npx wrangler secret put` for `DISCORD_APPLICATION_ID`,
+`DISCORD_PUBLIC_KEY`, `DISCORD_BOT_TOKEN`, `LINK_SECRET` (any long random text; changing it cancels
+every key) and optionally `DISCORD_GUILD_ID`, and `npm run update` (faction list, deploy).
 
 ## Setting it up on your server
 
@@ -179,7 +199,8 @@ npm run build:node  # the Node build (dist-node/) that scripts/server.mjs runs o
 
 The request handler (`src/handler.ts`) is the same on Cloudflare (`src/index.ts`) and on a machine
 (`scripts/server.mjs`, with the admin page in `scripts/admin.mjs`). The install and update scripts
-are in `deploy/`.
+are in `deploy/`: `setup.mjs` and `setup-page.html` (the setup page), `setup-windows.ps1` and
+`setup-linux.sh` (start it), `server-setup.sh` and `server-update.sh` (run on the Linux machine).
 
 The report format is EDCH's `docs/BGS_SYNC.md`.
 

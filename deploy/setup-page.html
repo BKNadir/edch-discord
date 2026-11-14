@@ -1,0 +1,603 @@
+<!doctype html>
+<!-- The bot's setup page (served by deploy/setup.mjs on 127.0.0.1): where the bot runs, its settings,
+     and the progress of each step. Every call carries the one-time key the address came with. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EDCH bot setup</title>
+    <style>
+      :root {
+        --bg: #0d0f12;
+        --card: #171a1f;
+        --line: #2a2f37;
+        --text: #e8e6e1;
+        --sub: #9aa0a8;
+        --accent: #f07b05;
+        --bad: #e5484d;
+        --ok: #3fb950;
+        --console: #07090b;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f6f5f2;
+          --card: #fff;
+          --line: #ddd;
+          --text: #1b1d21;
+          --sub: #5d636b;
+          --console: #1b1d21;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 24px 16px 64px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      h1 span {
+        color: var(--accent);
+      }
+      .sub {
+        color: var(--sub);
+        font-size: 13px;
+      }
+      section {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px;
+        margin: 16px 0;
+      }
+      h2 {
+        font-size: 14px;
+        margin: 0 0 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--accent);
+      }
+      label {
+        display: block;
+        margin: 12px 0 4px;
+        font-weight: 600;
+      }
+      input {
+        width: 100%;
+        padding: 9px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+      }
+      input.bad {
+        border-color: var(--bad);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 110px;
+        gap: 0 12px;
+      }
+      .choice {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .choice label {
+        flex: 1 1 260px;
+        margin: 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        cursor: pointer;
+        font-weight: 400;
+      }
+      .choice input {
+        width: auto;
+        margin-right: 8px;
+      }
+      .choice label:has(input:checked) {
+        border-color: var(--accent);
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 14px;
+      }
+      button,
+      a.button {
+        background: var(--accent);
+        color: #111;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 16px;
+        font: 600 14px system-ui;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      button.ghost {
+        background: none;
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      pre {
+        background: var(--console);
+        color: #d7dadf;
+        border-radius: 8px;
+        padding: 12px;
+        max-height: 340px;
+        overflow: auto;
+        font:
+          12.5px/1.45 ui-monospace,
+          Consolas,
+          monospace;
+        white-space: pre-wrap;
+        margin: 0;
+      }
+      .ok {
+        color: var(--ok);
+      }
+      .bad {
+        color: var(--bad);
+      }
+      .lang {
+        float: right;
+      }
+      .lang button {
+        background: none;
+        color: var(--sub);
+        padding: 4px 6px;
+        font-weight: 400;
+      }
+      details summary {
+        cursor: pointer;
+        color: var(--accent);
+        margin-top: 12px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      code {
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="lang">
+        <button type="button" data-lang="en">EN</button><button type="button" data-lang="fr">FR</button>
+      </div>
+      <h1><span>EDCH</span> bot setup</h1>
+      <p class="sub" data-t="intro"></p>
+
+      <section>
+        <h2 data-t="whereTitle"></h2>
+        <div class="choice">
+          <label
+            ><input type="radio" name="mode" value="cloudflare" /><b>Cloudflare</b><br /><span
+              class="sub"
+              data-t="cloudflareHelp"
+            ></span
+          ></label>
+          <label
+            ><input type="radio" name="mode" value="server" /><b data-t="machineName"></b><br /><span
+              class="sub"
+              data-t="machineHelp"
+            ></span
+          ></label>
+        </div>
+      </section>
+
+      <!-- Cloudflare -->
+      <section id="cloudflare" hidden>
+        <h2>Cloudflare</h2>
+        <p class="sub" data-t="cfAccountHelp"></p>
+        <div class="row"><button id="cfAccount" data-t="cfAccount"></button><span id="cfAccountInfo"></span></div>
+      </section>
+
+      <!-- The Linux machine -->
+      <section id="machine" hidden>
+        <h2 data-t="machineTitle"></h2>
+        <p class="sub" data-t="sshHelp"></p>
+        <div class="grid">
+          <div>
+            <label for="SSH_HOST" data-t="sshHost"></label
+            ><input id="SSH_HOST" placeholder="192.168.1.20" autocomplete="off" />
+          </div>
+          <div>
+            <label for="SSH_PORT" data-t="sshPort"></label><input id="SSH_PORT" value="22" inputmode="numeric" />
+          </div>
+        </div>
+        <label for="SSH_USER" data-t="sshUser"></label><input id="SSH_USER" placeholder="pi" autocomplete="off" />
+        <label for="SSH_PASSWORD" data-t="sshPassword"></label
+        ><input id="SSH_PASSWORD" type="password" autocomplete="off" />
+        <div class="sub" data-t="sshPasswordHelp"></div>
+        <details>
+          <summary data-t="moreSsh"></summary>
+          <label for="SSH_KEY_FILE" data-t="sshKey"></label
+          ><input id="SSH_KEY_FILE" autocomplete="off" spellcheck="false" />
+          <div class="sub" data-t="sshKeyHelp"></div>
+          <label for="SSH_KEY_PASSPHRASE" data-t="sshPassphrase"></label
+          ><input id="SSH_KEY_PASSPHRASE" type="password" autocomplete="off" />
+          <label for="SUDO_PASSWORD" data-t="sudoPassword"></label
+          ><input id="SUDO_PASSWORD" type="password" autocomplete="off" />
+          <div class="sub" data-t="sudoHelp"></div>
+        </details>
+        <div class="row"><button id="connect" data-t="connect"></button><span id="machineInfo"></span></div>
+        <div id="machineActions" class="row" hidden>
+          <button id="machineUpdate" data-t="update"></button
+          ><button class="ghost" id="machineAdmin" data-t="openAdmin"></button
+          ><a class="button" id="adminLink" target="_blank" rel="noopener" hidden data-t="adminLink"></a>
+        </div>
+      </section>
+
+      <!-- Discord and DuckDNS settings -->
+      <section id="settings" hidden>
+        <h2 data-t="settingsTitle"></h2>
+        <p class="sub" id="settingsHelp"></p>
+        <label for="DISCORD_APPLICATION_ID">Application ID</label
+        ><input id="DISCORD_APPLICATION_ID" inputmode="numeric" autocomplete="off" />
+        <label for="DISCORD_PUBLIC_KEY">Public Key</label
+        ><input id="DISCORD_PUBLIC_KEY" autocomplete="off" spellcheck="false" />
+        <label for="DISCORD_BOT_TOKEN" data-t="token"></label
+        ><input id="DISCORD_BOT_TOKEN" type="password" autocomplete="off" />
+        <label for="DISCORD_GUILD_ID" data-t="guild"></label
+        ><input id="DISCORD_GUILD_ID" inputmode="numeric" autocomplete="off" />
+        <div class="sub" data-t="guildHelp"></div>
+        <div id="duck">
+          <label for="DUCKDNS_DOMAIN" data-t="duckName"></label
+          ><input id="DUCKDNS_DOMAIN" placeholder="mysquadron" autocomplete="off" />
+          <div class="sub" data-t="duckHelp"></div>
+          <label for="DUCKDNS_TOKEN" data-t="duckToken"></label
+          ><input id="DUCKDNS_TOKEN" type="password" autocomplete="off" />
+          <div class="sub" data-t="portsHelp"></div>
+        </div>
+        <div class="row"><button id="install"></button><span id="settingsError" class="bad"></span></div>
+      </section>
+
+      <section id="progress" hidden>
+        <h2 data-t="progress"></h2>
+        <pre id="console"></pre>
+        <div id="result" class="row"></div>
+      </section>
+
+      <div class="row"><button class="ghost" id="quit" data-t="quit"></button></div>
+    </main>
+    <script>
+      const TOKEN = "__TOKEN__";
+      history.replaceState(null, "", location.pathname);
+      const TEXT = {
+        en: {
+          intro:
+            "This page runs on your PC only. Passwords and secrets go to Cloudflare or to your machine, nowhere else, and aren't kept here.",
+          whereTitle: "Where the bot runs",
+          cloudflareHelp: "Free Cloudflare Worker: nothing to keep switched on.",
+          machineName: "Your Linux machine",
+          machineHelp:
+            "A Linux machine reached with SSH (Raspberry Pi, home server). Its address comes from DuckDNS, with HTTPS.",
+          cfAccountHelp:
+            "Sign in to the Cloudflare account the bot runs on (or will run on): a Cloudflare tab opens. If the bot is already there, it is updated.",
+          cfAccount: "Sign in and check",
+          machineTitle: "The Linux machine",
+          sshHelp:
+            "The machine's address and an account with sudo rights. An SSH key from ~/.ssh is used when there is one.",
+          sshHost: "Address",
+          sshPort: "SSH port",
+          sshUser: "User",
+          sshPassword: "Password",
+          sshPasswordHelp: "Leave it empty when an SSH key opens the machine.",
+          moreSsh: "SSH key, sudo password",
+          sshKey: "Private key file (optional)",
+          sshKeyHelp: "Empty: ~/.ssh/id_ed25519, id_ecdsa or id_rsa when there is one.",
+          sshPassphrase: "Key passphrase (optional)",
+          sudoPassword: "sudo password (optional)",
+          sudoHelp: "Empty: the SSH password.",
+          connect: "Connect and check",
+          update: "Update the bot",
+          openAdmin: "Open the admin page",
+          adminLink: "Admin page ↗",
+          settingsTitle: "Discord settings",
+          token: "Bot token",
+          guild: "Your Discord server's ID (optional)",
+          guildHelp:
+            "Right-click your server (developer mode on) → Copy Server ID: the bot then answers that server only.",
+          duckName: "DuckDNS name",
+          duckHelp:
+            'Made on duckdns.org: "mysquadron" for mysquadron.duckdns.org. Your router forwards ports 80 and 443 (TCP) to the machine.',
+          duckToken: "DuckDNS token",
+          portsHelp:
+            "Some providers share one IP between customers (CGNAT): ports can't be forwarded then. Many give a public IP on request.",
+          newHelp:
+            "Developer portal → your application: Application ID and Public Key in General Information, the token in Bot → Reset Token.",
+          updateHelp:
+            "The bot is there: these fields are optional. Empty: kept as they are. The key-signing secret never changes, so members' keys stay valid.",
+          missingHelp: (f) =>
+            "The bot is there but Cloudflare lacks: " + f + ". Fill them in; the other fields are optional.",
+          reinstallHelp:
+            "Set up again with new settings (all needed): a new DuckDNS name, a new token… Members' keys stay valid.",
+          install: "Install",
+          updateBtn: "Update",
+          reinstall: "Set up again",
+          progress: "Progress",
+          quit: "Close the setup",
+          doneEndpoint: "Developer portal → General Information → Interactions Endpoint URL:",
+          doneThen: "Then Installation → the install link adds the bot to your server.",
+          failed: "Stopped: see above.",
+          badFields: "Some fields need a look.",
+          busy: "Something is already running.",
+          installed: "An EDCH bot is on this machine.",
+          notInstalled: "No EDCH bot on this machine yet.",
+          closed: "Setup closed: you can close this tab.",
+        },
+        fr: {
+          intro:
+            "Cette page tourne uniquement sur ton PC. Les mots de passe et secrets vont à Cloudflare ou à ta machine, nulle part ailleurs, et ne sont pas gardés ici.",
+          whereTitle: "Où tourne le bot",
+          cloudflareHelp: "Worker Cloudflare gratuit : rien à garder allumé.",
+          machineName: "Ta machine Linux",
+          machineHelp:
+            "Une machine Linux jointe en SSH (Raspberry Pi, serveur à la maison). Son adresse vient de DuckDNS, en HTTPS.",
+          cfAccountHelp:
+            "Connecte-toi au compte Cloudflare où tourne (ou tournera) le bot : un onglet Cloudflare s'ouvre. Si le bot y est déjà, il est mis à jour.",
+          cfAccount: "Se connecter et vérifier",
+          machineTitle: "La machine Linux",
+          sshHelp:
+            "L'adresse de la machine et un compte avec les droits sudo. Une clé SSH de ~/.ssh est utilisée s'il y en a une.",
+          sshHost: "Adresse",
+          sshPort: "Port SSH",
+          sshUser: "Utilisateur",
+          sshPassword: "Mot de passe",
+          sshPasswordHelp: "Laisse vide si une clé SSH ouvre la machine.",
+          moreSsh: "Clé SSH, mot de passe sudo",
+          sshKey: "Fichier de clé privée (facultatif)",
+          sshKeyHelp: "Vide : ~/.ssh/id_ed25519, id_ecdsa ou id_rsa s'il y en a une.",
+          sshPassphrase: "Phrase de passe de la clé (facultatif)",
+          sudoPassword: "Mot de passe sudo (facultatif)",
+          sudoHelp: "Vide : le mot de passe SSH.",
+          connect: "Se connecter et vérifier",
+          update: "Mettre à jour le bot",
+          openAdmin: "Ouvrir la page d'administration",
+          adminLink: "Page d'administration ↗",
+          settingsTitle: "Réglages Discord",
+          token: "Token du bot",
+          guild: "ID de ton serveur Discord (facultatif)",
+          guildHelp:
+            "Clic droit sur ton serveur (mode développeur activé) → Copier l'identifiant du serveur : le bot ne répond alors qu'à ce serveur.",
+          duckName: "Nom DuckDNS",
+          duckHelp:
+            "À créer sur duckdns.org : « monescadrille » pour monescadrille.duckdns.org. Ta box redirige les ports 80 et 443 (TCP) vers la machine.",
+          duckToken: "Token DuckDNS",
+          portsHelp:
+            "Certains fournisseurs partagent une IP entre clients (CGNAT) : impossible alors de rediriger des ports. Beaucoup donnent une IP publique sur demande.",
+          newHelp:
+            "Portail développeur → ton application : Application ID et Public Key dans General Information, le token dans Bot → Reset Token.",
+          updateHelp:
+            "Le bot est là : ces champs sont facultatifs. Vides : gardés tels quels. Le secret de signature ne change jamais, les clés des membres restent valables.",
+          missingHelp: (f) =>
+            "Le bot est là mais Cloudflare n'a pas : " + f + ". Remplis-les ; les autres champs sont facultatifs.",
+          reinstallHelp:
+            "Réinstaller avec de nouveaux réglages (tous nécessaires) : nouveau nom DuckDNS, nouveau token… Les clés des membres restent valables.",
+          install: "Installer",
+          updateBtn: "Mettre à jour",
+          reinstall: "Réinstaller",
+          progress: "Avancement",
+          quit: "Fermer l'installation",
+          doneEndpoint: "Portail développeur → General Information → Interactions Endpoint URL :",
+          doneThen: "Puis Installation → le lien d'installation ajoute le bot à ton serveur.",
+          failed: "Arrêté : voir ci-dessus.",
+          badFields: "Quelques champs sont à revoir.",
+          busy: "Une étape est déjà en cours.",
+          installed: "Un bot EDCH est sur cette machine.",
+          notInstalled: "Pas encore de bot EDCH sur cette machine.",
+          closed: "Installation fermée : tu peux fermer cet onglet.",
+        },
+      };
+      const $ = (id) => document.getElementById(id);
+      const FIELDS = [
+        "SSH_HOST",
+        "SSH_PORT",
+        "SSH_USER",
+        "SSH_PASSWORD",
+        "SSH_KEY_FILE",
+        "SSH_KEY_PASSPHRASE",
+        "SUDO_PASSWORD",
+        "DISCORD_APPLICATION_ID",
+        "DISCORD_PUBLIC_KEY",
+        "DISCORD_BOT_TOKEN",
+        "DISCORD_GUILD_ID",
+        "DUCKDNS_DOMAIN",
+        "DUCKDNS_TOKEN",
+      ];
+      let lang = (navigator.language || "en").startsWith("fr") ? "fr" : "en";
+      try {
+        lang = localStorage.getItem("edch.setup.lang") || lang;
+      } catch {}
+      /** What the last check found: Cloudflare {exists, missing} or the machine {installed}. */
+      let found = null;
+      let installAction = "";
+
+      const api = (path, body) =>
+        fetch(path, {
+          method: body ? "POST" : "GET",
+          headers: { "X-Setup-Token": TOKEN, "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : undefined,
+        }).then(async (r) => ({ status: r.status, ...(await r.json()) }));
+      const values = () => Object.fromEntries(FIELDS.map((k) => [k, $(k).value.trim()]));
+      const mode = () => document.querySelector("[name=mode]:checked")?.value;
+
+      function setLang(l) {
+        lang = l;
+        document.documentElement.lang = l;
+        try {
+          localStorage.setItem("edch.setup.lang", l);
+        } catch {}
+        for (const el of document.querySelectorAll("[data-t]")) el.textContent = TEXT[l][el.dataset.t];
+        showSettings();
+      }
+
+      function showMode() {
+        const m = mode();
+        $("cloudflare").hidden = m !== "cloudflare";
+        $("machine").hidden = m !== "server";
+        found = null;
+        $("machineActions").hidden = true;
+        $("cfAccountInfo").textContent = $("machineInfo").textContent = "";
+        showSettings();
+      }
+
+      /** The settings card: new install (all needed), update (optional), or hidden until a check. */
+      function showSettings() {
+        const t = TEXT[lang];
+        const m = mode();
+        const card = $("settings");
+        if (!found) {
+          card.hidden = true;
+          return;
+        }
+        card.hidden = false;
+        $("duck").hidden = m !== "server";
+        if (m === "cloudflare") {
+          installAction = found.exists ? "update" : "install";
+          $("settingsHelp").textContent = !found.exists
+            ? t.newHelp
+            : found.missing.length
+              ? t.missingHelp(found.missing.join(", "))
+              : t.updateHelp;
+          $("install").textContent = found.exists ? t.updateBtn : t.install;
+        } else {
+          installAction = found.installed ? "reinstall" : "install";
+          $("settingsHelp").textContent = found.installed ? t.reinstallHelp : t.newHelp;
+          $("install").textContent = found.installed ? t.reinstall : t.install;
+        }
+      }
+
+      function markBad(bad) {
+        for (const k of FIELDS) $(k).classList.toggle("bad", (bad || []).includes(k));
+        if ((bad || []).some((k) => k.startsWith("SSH_") || k === "SUDO_PASSWORD"))
+          $("machine").querySelector("details").open ||= bad.some((k) => ["SSH_KEY_FILE"].includes(k));
+      }
+
+      /** Starts a step, shows its progress, then calls `then` with its result. */
+      async function start(path, body, then) {
+        markBad([]);
+        $("settingsError").textContent = "";
+        const answer = await api(path, body);
+        if (answer.bad) {
+          markBad(answer.bad);
+          $("settingsError").textContent = TEXT[lang].badFields;
+          return;
+        }
+        if (answer.status === 409) {
+          $("settingsError").textContent = TEXT[lang].busy;
+          return;
+        }
+        for (const b of document.querySelectorAll("button")) if (!b.closest(".lang")) b.disabled = true;
+        $("progress").hidden = false;
+        $("console").textContent = "";
+        $("result").replaceChildren();
+        let from = 0;
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 600));
+          const j = await api("/api/job?from=" + from);
+          if (j.lines.length) {
+            $("console").textContent += j.lines.join("\n") + "\n";
+            $("console").scrollTop = 1e9;
+            from += j.lines.length;
+          }
+          if (j.done && !j.running) {
+            for (const b of document.querySelectorAll("button")) b.disabled = false;
+            if (!j.ok) {
+              const p = document.createElement("span");
+              p.className = "bad";
+              p.textContent = TEXT[lang].failed;
+              $("result").replaceChildren(p);
+              return;
+            }
+            then(j.result || {});
+            return;
+          }
+        }
+      }
+
+      function showDone(result) {
+        if (!result.endpoint) return;
+        const t = TEXT[lang];
+        const box = document.createElement("div");
+        box.innerHTML = '<p class="ok"></p><p></p><p><code></code></p><p class="sub"></p>';
+        box.children[0].textContent = "✔";
+        box.children[1].textContent = t.doneEndpoint;
+        box.children[2].firstChild.textContent = result.endpoint;
+        box.children[3].textContent = t.doneThen;
+        $("result").replaceChildren(box);
+      }
+
+      $("cfAccount").onclick = () =>
+        start("/api/cloudflare/account", {}, (r) => {
+          $("cfAccountInfo").textContent = r.account || "";
+          found = { exists: r.exists, missing: r.missing || [] };
+          showSettings();
+        });
+      $("connect").onclick = () =>
+        start("/api/machine/check", values(), (r) => {
+          found = { installed: r.installed };
+          $("machineInfo").textContent = r.installed ? TEXT[lang].installed : TEXT[lang].notInstalled;
+          $("machineActions").hidden = !r.installed;
+          showSettings();
+        });
+      $("machineUpdate").onclick = () =>
+        start("/api/machine/install", { ...values(), DISCORD_BOT_TOKEN: "", installed: "true" }, showDone);
+      $("machineAdmin").onclick = () =>
+        start("/api/machine/admin", values(), (r) => {
+          if (!r.adminUrl) return;
+          $("adminLink").href = r.adminUrl;
+          $("adminLink").hidden = false;
+          window.open(r.adminUrl, "_blank", "noopener");
+        });
+      $("install").onclick = () => {
+        if (mode() === "cloudflare")
+          start(
+            "/api/cloudflare/install",
+            { ...values(), exists: String(found.exists), missing: found.missing.join(",") },
+            showDone,
+          );
+        else start("/api/machine/install", { ...values(), installed: String(found.installed) }, showDone);
+      };
+      $("quit").onclick = async () => {
+        await api("/api/quit", {}).catch(() => {});
+        document.querySelector("main").innerHTML = "<p></p>";
+        document.querySelector("main p").textContent = TEXT[lang].closed;
+      };
+      for (const b of document.querySelectorAll("[data-lang]")) b.onclick = () => setLang(b.dataset.lang);
+      for (const r of document.querySelectorAll("[name=mode]")) r.onchange = showMode;
+
+      // The answers of last time (no secret in them).
+      api("/api/state").then((s) => {
+        const a = s.answers || {};
+        for (const k of ["SSH_HOST", "SSH_PORT", "SSH_USER", "SSH_KEY_FILE", "DUCKDNS_DOMAIN"])
+          if (a[k]) $(k).value = a[k];
+        if (a.MODE) for (const r of document.querySelectorAll("[name=mode]")) r.checked = r.value === a.MODE;
+        showMode();
+      });
+      setLang(lang);
+    </script>
+  </body>
+</html>
