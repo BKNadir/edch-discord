@@ -168,6 +168,27 @@
         padding: 4px 6px;
         font-weight: 400;
       }
+      .checks {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+      }
+      .checks li {
+        padding: 3px 0;
+      }
+      .checks .i {
+        display: inline-block;
+        width: 22px;
+      }
+      .checks .ok .i {
+        color: var(--ok);
+      }
+      .checks .install {
+        color: var(--accent);
+      }
+      .checks .error {
+        color: var(--bad);
+      }
       details summary {
         cursor: pointer;
         color: var(--accent);
@@ -212,6 +233,7 @@
         <h2>Cloudflare</h2>
         <p class="sub" data-t="cfAccountHelp"></p>
         <div class="row"><button id="cfAccount" data-t="cfAccount"></button><span id="cfAccountInfo"></span></div>
+        <ul class="checks" id="cfChecks"></ul>
       </section>
 
       <!-- The Linux machine -->
@@ -243,6 +265,7 @@
           <div class="sub" data-t="sudoHelp"></div>
         </details>
         <div class="row"><button id="connect" data-t="connect"></button><span id="machineInfo"></span></div>
+        <ul class="checks" id="machineChecks"></ul>
         <div id="machineActions" class="row" hidden>
           <button id="machineUpdate" data-t="update"></button
           ><button class="ghost" id="machineAdmin" data-t="openAdmin"></button
@@ -345,6 +368,7 @@
           badFields: "Some fields need a look.",
           busy: "Something is already running.",
           installed: "An EDCH bot is on this machine.",
+          notReady: "The machine isn't ready: see what is marked ✖.",
           notInstalled: "No EDCH bot on this machine yet.",
           closed: "Setup closed: you can close this tab.",
         },
@@ -407,6 +431,7 @@
           badFields: "Quelques champs sont à revoir.",
           busy: "Une étape est déjà en cours.",
           installed: "Un bot EDCH est sur cette machine.",
+          notReady: "La machine n'est pas prête : voir ce qui est marqué ✖.",
           notInstalled: "Pas encore de bot EDCH sur cette machine.",
           closed: "Installation fermée : tu peux fermer cet onglet.",
         },
@@ -461,6 +486,8 @@
         found = null;
         $("machineActions").hidden = true;
         $("cfAccountInfo").textContent = $("machineInfo").textContent = "";
+        $("cfChecks").replaceChildren();
+        $("machineChecks").replaceChildren();
         showSettings();
       }
 
@@ -525,6 +552,7 @@
           }
           if (j.done && !j.running) {
             for (const b of document.querySelectorAll("button")) b.disabled = false;
+            if (j.result && j.result.checks) renderChecks(j.result.checks);
             if (!j.ok) {
               const p = document.createElement("span");
               p.className = "bad";
@@ -536,6 +564,24 @@
             return;
           }
         }
+      }
+
+      /** The list of what was checked: ✔ there, ⬇ installed by the setup, ✖ blocks (with why). */
+      function renderChecks(list) {
+        const target = mode() === "cloudflare" ? $("cfChecks") : $("machineChecks");
+        target.replaceChildren(
+          ...list.map((c) => {
+            const li = document.createElement("li");
+            li.className = c.status;
+            const icon = document.createElement("span");
+            icon.className = "i";
+            icon.textContent = c.status === "ok" ? "✔" : c.status === "install" ? "⬇" : "✖";
+            const name = document.createElement("b");
+            name.textContent = c.name;
+            li.append(icon, name, c.detail ? " — " + c.detail : "");
+            return li;
+          }),
+        );
       }
 
       function showDone(result) {
@@ -558,7 +604,17 @@
         });
       $("connect").onclick = () =>
         start("/api/machine/check", values(), (r) => {
+          if (!r.ready) {
+            // Something blocks: no install button until it is fixed and checked again.
+            found = null;
+            $("machineInfo").textContent = TEXT[lang].notReady;
+            $("machineInfo").className = "bad";
+            $("machineActions").hidden = true;
+            showSettings();
+            return;
+          }
           found = { installed: r.installed };
+          $("machineInfo").className = "";
           $("machineInfo").textContent = r.installed ? TEXT[lang].installed : TEXT[lang].notInstalled;
           $("machineActions").hidden = !r.installed;
           showSettings();

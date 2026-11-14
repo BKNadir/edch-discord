@@ -78,6 +78,80 @@ async function runJob(work) {
   return true;
 }
 
+// ---------------------------------------------------------------- checks before installing
+
+/**
+ * One line of a check list: "ok", "install" (missing, the setup installs it) or "error" (blocks,
+ * with the reason). Shown in the page's list and in the progress.
+ */
+function check(list, name, status, detail = "") {
+  list.push({ name, status, detail });
+  log(`${status === "ok" ? "✔" : status === "install" ? "⬇" : "✖"} ${name}${detail ? `: ${detail}` : ""}`);
+}
+
+/** Whether this PC reaches an address (any answer counts: the address is reachable). */
+async function reachable(url) {
+  try {
+    await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(10_000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** What this PC needs for Cloudflare: Node, npm, the tools, and the sites it talks to. */
+async function localChecks() {
+  const list = [];
+  const major = Number(process.versions.node.split(".")[0]);
+  check(
+    list,
+    "Node.js",
+    major >= 20 ? "ok" : "error",
+    major >= 20 ? process.versions.node : `${process.versions.node}: version 20 or newer is needed (nodejs.org)`,
+  );
+  let npm = "";
+  try {
+    npm = (await local("npm", ["-v"], { quiet: true })).trim();
+  } catch {
+    npm = "";
+  }
+  check(list, "npm", npm ? "ok" : "error", npm || "missing: install Node.js again from nodejs.org (it comes with npm)");
+  const tools = existsSync(join(ROOT, "node_modules", "wrangler"));
+  const registry = tools || (await reachable("https://registry.npmjs.org/"));
+  check(
+    list,
+    "Setup tools (wrangler)",
+    tools ? "ok" : registry ? "install" : "error",
+    tools
+      ? ""
+      : registry
+        ? "installed now (npm install)"
+        : "missing, and the npm registry can't be reached from this PC",
+  );
+  const cloudflare = await reachable("https://api.cloudflare.com/client/v4/");
+  check(
+    list,
+    "Cloudflare",
+    cloudflare ? "ok" : "error",
+    cloudflare ? "" : "api.cloudflare.com can't be reached (firewall, proxy?)",
+  );
+  const edsm = await reachable("https://www.edsm.net/dump/systemsPopulated.json.gz");
+  check(
+    list,
+    "EDSM (faction list)",
+    edsm ? "ok" : "error",
+    edsm ? "" : "www.edsm.net can't be reached (firewall, proxy?)",
+  );
+  return list;
+}
+
+/** Runs the checks of `list`: installs what can be, stops with the reasons when something blocks. */
+async function settle(list, install) {
+  const errors = list.filter((c) => c.status === "error");
+  if (errors.length) throw new Error(`Not ready: ${errors.map((c) => c.name).join(", ")} (see above).`);
+  if (install && list.some((c) => c.status === "install")) await install();
+}
+
 // ---------------------------------------------------------------- local commands (Cloudflare)
 
 /** Runs a command in the bot's folder, its output in the page; resolves with it, rejects on failure. */
@@ -279,17 +353,138 @@ function remote(conn, command, { sudoPassword = "", input, quiet = false } = {})
   });
 }
 
-/** What the machine already has: the bot, and its admin page key. */
-async function machineState(conn) {
-  const out = await remote(conn, "test -f ~/edch-discord/bot.env && echo INSTALLED || echo NONE", { quiet: true });
-  return out.includes("INSTALLED");
+/** What the machine says about itself: KEY=value lines (nothing secret). */
+const MACHINE_PROBE = `
+. /etc/os-release 2>/dev/null; echo "OS=\${PRETTY_NAME:-unknown}"
+if command -v apt-get >/dev/null; then echo PKG=apt; elif command -v dnf >/dev/null; then echo PKG=dnf; else echo PKG=none; fi
+echo "ARCH=$(uname -m)"
+[ -d /run/systemd/system ] && echo SYSTEMD=yes || echo SYSTEMD=no
+echo "ROOT=$([ "$(id -u)" -eq 0 ] && echo yes || echo no)"
+echo "NODE=$(node -v 2>/dev/null)"
+for c in git curl caddy sudo; do command -v $c >/dev/null && echo "HAS_$c=yes" || echo "HAS_$c=no"; done
+echo "DISK_MB=$(df -Pm "$HOME" | awk 'NR==2{print $4}')"
+echo "PORTS=$( (ss -ltnH 2>/dev/null || netstat -ltn 2>/dev/null) | awk '{print $4}' | grep -oE ':(80|443)$' | sort -u | tr '\\n' ' ')"
+if command -v curl >/dev/null; then
+  for site in github.com nodejs.org www.edsm.net www.duckdns.org; do
+    curl -fsS -m 10 -o /dev/null "https://$site" 2>/dev/null && echo "NET_$site=yes" || echo "NET_$site=no"
+  done
+fi
+test -f ~/edch-discord/bot.env && echo INSTALLED=yes || echo INSTALLED=no
+`;
+
+/**
+ * Whether the machine can take the bot: what is there, what the setup installs (Node.js 22, git,
+ * curl, Caddy), and what blocks it, with the reason.
+ */
+async function machineChecks(conn, sudoPassword) {
+  const out = await remote(conn, "bash -s", { input: MACHINE_PROBE, quiet: true });
+  const v = Object.fromEntries(
+    out
+      .split(/\r?\n/)
+      .filter((l) => l.includes("="))
+      .map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]),
+  );
+  const list = [];
+  check(list, "System", "ok", v.OS);
+  check(
+    list,
+    "Packages",
+    v.PKG === "none" ? "error" : "ok",
+    v.PKG === "none" ? "only apt (Debian, Ubuntu, Raspberry Pi OS…) and dnf (Fedora…) systems are supported" : v.PKG,
+  );
+  const arch = ["x86_64", "aarch64", "arm64"].includes(v.ARCH);
+  check(
+    list,
+    "Processor",
+    arch ? "ok" : "error",
+    arch ? v.ARCH : `${v.ARCH}: Node.js 22 needs a 64-bit processor (x86_64 or arm64)`,
+  );
+  check(
+    list,
+    "systemd",
+    v.SYSTEMD === "yes" ? "ok" : "error",
+    v.SYSTEMD === "yes" ? "" : "the bot runs as a systemd service: this system has none",
+  );
+  if (v.ROOT === "yes") check(list, "User", "error", "log in as a normal user with sudo rights, not root");
+  let sudo = v.HAS_sudo === "yes" && v.ROOT !== "yes";
+  if (sudo) {
+    try {
+      await remote(conn, "sudo -k; sudo -v && echo SUDO_OK", { sudoPassword, quiet: true });
+    } catch {
+      sudo = false;
+    }
+  }
+  if (v.ROOT !== "yes")
+    check(
+      list,
+      "sudo",
+      sudo ? "ok" : "error",
+      sudo
+        ? ""
+        : v.HAS_sudo === "yes"
+          ? "this user can't use sudo, or the sudo password is wrong"
+          : "sudo isn't installed",
+    );
+  const node = Number(/^v(\d+)/.exec(v.NODE ?? "")?.[1] ?? 0);
+  check(
+    list,
+    "Node.js",
+    node >= 22 ? "ok" : "install",
+    node >= 22 ? v.NODE : `${v.NODE || "missing"}: Node.js 22 will be installed (official build)`,
+  );
+  for (const tool of ["git", "curl"])
+    check(
+      list,
+      tool,
+      v[`HAS_${tool}`] === "yes" ? "ok" : "install",
+      v[`HAS_${tool}`] === "yes" ? "" : "will be installed",
+    );
+  check(
+    list,
+    "Caddy (HTTPS)",
+    v.HAS_caddy === "yes" ? "ok" : "install",
+    v.HAS_caddy === "yes" ? "" : "will be installed",
+  );
+  const busy = (v.PORTS ?? "").trim();
+  check(
+    list,
+    "Ports 80 and 443",
+    !busy || v.HAS_caddy === "yes" ? "ok" : "error",
+    !busy
+      ? "free"
+      : v.HAS_caddy === "yes"
+        ? "used by Caddy"
+        : `${busy.replace(/:/g, "").split(" ").join(" and ")} already used by another program (a web server?): Caddy needs them`,
+  );
+  const disk = Number(v.DISK_MB ?? 0);
+  check(
+    list,
+    "Disk space",
+    disk >= 1024 ? "ok" : "error",
+    disk >= 1024 ? `${Math.round(disk / 1024)} GB free` : `${disk} MB free: about 1 GB is needed`,
+  );
+  if (v.HAS_curl === "yes") {
+    const offline = ["github.com", "nodejs.org", "www.edsm.net", "www.duckdns.org"].filter(
+      (site) => v[`NET_${site}`] !== "yes",
+    );
+    check(
+      list,
+      "Internet",
+      offline.length ? "error" : "ok",
+      offline.length ? `the machine can't reach ${offline.join(", ")}` : "",
+    );
+  } else check(list, "Internet", "install", "checked once curl is installed");
+  return { checks: list, installed: v.INSTALLED === "yes" };
 }
 
 async function machineInstall(form) {
   const conn = await connect(form);
   try {
     const sudo = form.SUDO_PASSWORD || form.SSH_PASSWORD || "";
-    const installed = await machineState(conn);
+    log("▶ The machine");
+    const { checks, installed } = await machineChecks(conn, sudo);
+    job.result = { checks };
+    await settle(checks);
     if (installed && !form.DISCORD_BOT_TOKEN) {
       log("▶ EDCH bot found on this machine: update (new code, faction list, build, restart)");
       await remote(conn, "bash ~/edch-discord/deploy/server-update.sh", { sudoPassword: sudo });
@@ -432,10 +627,13 @@ const server = createHttpServer(async (req, res) => {
     case "POST /api/cloudflare/account": {
       if (job.running) return send(409, { error: "busy" });
       void runJob(async () => {
-        if (!existsSync(join(ROOT, "node_modules", "wrangler"))) {
+        log("▶ This PC");
+        const checks = await localChecks();
+        job.result = { checks };
+        await settle(checks, async () => {
           log("▶ npm install (first time, a minute or two)");
           await local("npm", ["install", "--no-audit", "--no-fund", "--loglevel=error"]);
-        }
+        });
         let account = await cloudflareAccount();
         if (!account) {
           log("▶ Sign in to Cloudflare in the browser tab that opens");
@@ -450,7 +648,7 @@ const server = createHttpServer(async (req, res) => {
         const missing = exists
           ? ["DISCORD_APPLICATION_ID", "DISCORD_PUBLIC_KEY", "DISCORD_BOT_TOKEN"].filter((n) => !secrets.includes(n))
           : [];
-        return { account, exists, missing };
+        return { account, exists, missing, checks };
       });
       return send(200, { ok: true });
     }
@@ -473,9 +671,11 @@ const server = createHttpServer(async (req, res) => {
         log(`▶ SSH ${form.SSH_USER}@${form.SSH_HOST}:${form.SSH_PORT}`);
         const conn = await connect(form);
         try {
-          const installed = await machineState(conn);
+          const { checks, installed } = await machineChecks(conn, form.SUDO_PASSWORD || form.SSH_PASSWORD || "");
           log(installed ? "✔ An EDCH bot is already on this machine." : "✔ No EDCH bot on this machine yet.");
-          return { installed };
+          const ready = !checks.some((c) => c.status === "error");
+          if (!ready) log("✖ Fix what is marked ✖ on the machine, then check again.");
+          return { installed, checks, ready };
         } finally {
           conn.end();
         }

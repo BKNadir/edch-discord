@@ -99,7 +99,10 @@ cd edch-discord
 - **Windows**: `powershell -ExecutionPolicy Bypass -File deploy\setup-windows.ps1`
 - **Linux** (or macOS): `bash deploy/setup-linux.sh`
 
-The script installs the setup's tools (`npm install`) and opens the **setup page** in your browser.
+The script installs the setup's tools (`npm install`) and opens the **setup page** in your browser. Before installing anything, the page **checks** what is needed, on this PC for Cloudflare
+(Node.js, npm, the tools, Cloudflare and EDSM reachable) or on the Linux machine (system, systemd,
+sudo, processor, disk space, ports 80 and 443, Internet): what is missing is installed by the setup
+(Node.js 22, git, curl, Caddy, the tools), and what blocks is shown with the reason.
 It runs on your PC only (`127.0.0.1`, a one-time address); keep the script's window open while you
 use it. Passwords and secrets stay in memory while it runs and go to Cloudflare or to your machine
 only. `.edch-install` keeps the answers without any secret (where the bot runs, the SSH address,
